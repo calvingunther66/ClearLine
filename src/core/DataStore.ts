@@ -3,7 +3,7 @@ import { SpatialIndex } from './SpatialIndex';
 export interface PrecinctData {
   id: number;
   coords: Float32Array;
-  stats: Uint16Array; // [Population, DemVotes, RepVotes]
+  stats: Int32Array; // [Pop, Dem, Rep, White, Black, Hispanic]
   districtId: number;
   stateId: number;
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
@@ -18,7 +18,7 @@ export class DataStore {
     // Initialize with empty state
   }
 
-  public addPrecinct(id: number, coords: Float32Array, stats: Uint16Array, districtId: number, stateId: number) {
+  public addPrecinct(id: number, coords: Float32Array, stats: Int32Array, districtId: number, stateId: number) {
     // Calculate bounds
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (let i = 0; i < coords.length; i += 2) {

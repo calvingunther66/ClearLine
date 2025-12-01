@@ -1,10 +1,12 @@
 import { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import { MapEngine } from '../core/MapEngine';
 import { DataStore } from '../core/DataStore';
+import type { PrecinctData } from '../core/DataStore';
 
 interface MapCanvasProps {
   dataStore: DataStore;
   updateTrigger: number;
+  onPrecinctSelect?: (data: PrecinctData | null) => void;
 }
 
 export interface MapCanvasHandle {
@@ -13,7 +15,7 @@ export interface MapCanvasHandle {
   setViewMode: (mode: 'district' | 'political') => void;
 }
 
-export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({ dataStore, updateTrigger }, ref) => {
+export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({ dataStore, updateTrigger, onPrecinctSelect }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<MapEngine | null>(null);
 
@@ -37,10 +39,14 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({ dataStor
       engineRef.current.start();
     }
     
+    if (engineRef.current) {
+      engineRef.current.onPrecinctSelect = onPrecinctSelect || null;
+    }
+    
     return () => {
       engineRef.current?.stop();
     };
-  }, [dataStore]);
+  }, [dataStore, onPrecinctSelect]);
 
   useEffect(() => {
     // Force re-render when updateTrigger changes

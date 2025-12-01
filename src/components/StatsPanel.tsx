@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { workerManager } from '../core/WorkerManager';
 import type { DistrictStats } from '../core/analysis';
+import type { PrecinctData } from '../core/DataStore';
 
-export const StatsPanel: React.FC = () => {
+interface StatsPanelProps {
+  selectedPrecinct?: PrecinctData | null;
+}
+
+export const StatsPanel: React.FC<StatsPanelProps> = ({ selectedPrecinct }) => {
   const [stats, setStats] = useState<DistrictStats[]>([]);
 
   useEffect(() => {
     const interval = setInterval(async () => {
-      // Poll for stats (in real app, use subscription)
-      // For now, trigger a dummy analysis
       try {
         const result = await workerManager.sendMessage('RUN_ANALYSIS', {});
         setStats(result as DistrictStats[]);
@@ -21,7 +24,59 @@ export const StatsPanel: React.FC = () => {
   }, []);
 
   return (
-    <div className="absolute top-20 right-6 w-72 bg-slate-900/80 backdrop-blur-xl rounded-xl border border-slate-700/50 shadow-2xl p-5 transition-all duration-300 hover:bg-slate-900/90">
+    <div className="absolute top-20 right-6 w-72 bg-slate-900/80 backdrop-blur-xl rounded-xl border border-slate-700/50 shadow-2xl p-5 transition-all duration-300 hover:bg-slate-900/90 max-h-[80vh] overflow-y-auto">
+      {selectedPrecinct && (
+        <div className="mb-6 pb-6 border-b border-slate-700/50">
+          <h2 className="text-xs font-bold text-slate-400 mb-4 uppercase tracking-widest flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            Selected County
+          </h2>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-slate-400">FIPS ID</span>
+              <span className="font-mono text-slate-200">{selectedPrecinct.id}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Population</span>
+              <span className="font-mono text-slate-200">{selectedPrecinct.stats[0].toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">District</span>
+              <span className="font-mono text-blue-400 font-bold">{selectedPrecinct.districtId}</span>
+            </div>
+            
+            <div className="mt-4 pt-2 border-t border-slate-800">
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-blue-400">Democrat</span>
+                <span className="text-slate-200">{selectedPrecinct.stats[1].toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-red-400">Republican</span>
+                <span className="text-slate-200">{selectedPrecinct.stats[2].toLocaleString()}</span>
+              </div>
+            </div>
+
+            <div className="mt-4 pt-2 border-t border-slate-800">
+              <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-2">Demographics</h3>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="block text-slate-500">White</span>
+                  <span className="font-mono text-slate-200">{selectedPrecinct.stats[3].toLocaleString()}</span>
+                </div>
+                <div>
+                  <span className="block text-slate-500">Black</span>
+                  <span className="font-mono text-slate-200">{selectedPrecinct.stats[4].toLocaleString()}</span>
+                </div>
+                <div>
+                  <span className="block text-slate-500">Hispanic</span>
+                  <span className="font-mono text-slate-200">{selectedPrecinct.stats[5].toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <h2 className="text-xs font-bold text-slate-400 mb-4 uppercase tracking-widest flex items-center gap-2">
         <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
         District Statistics

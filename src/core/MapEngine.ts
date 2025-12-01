@@ -1,4 +1,5 @@
 import { DataStore } from './DataStore';
+import type { PrecinctData } from './DataStore';
 import { DataGenerator } from './DataGenerator';
 import { BrushManager } from './BrushManager';
 import { workerManager } from './WorkerManager';
@@ -7,31 +8,27 @@ import type { Feature, Polygon, MultiPolygon } from 'geojson';
 export class MapEngine {
   private canvas: HTMLCanvasElement | null = null;
   private ctx: CanvasRenderingContext2D | null = null;
-  private transform = { x: 0, y: 0, k: 1 };
+  private hitCanvas: HTMLCanvasElement | null = null;
+  private hitCtx: CanvasRenderingContext2D | null = null;
+  private transform = { k: 1, x: 0, y: 0 };
 
   private dataStore: DataStore;
   private animationFrameId: number | null = null;
-  private hitCanvas: HTMLCanvasElement;
-  private hitCtx: CanvasRenderingContext2D;
   private brushManager: BrushManager;
   private hoveredPrecinctId: number | null = null;
   private districtBorders: Map<number, Feature<Polygon | MultiPolygon>> = new Map();
   private isRunning = false;
   private viewMode: 'district' | 'political' = 'district';
+  public onPrecinctSelect: ((data: PrecinctData | null) => void) | null = null;
 
   constructor(dataStore: DataStore) {
     this.dataStore = dataStore;
     this.brushManager = new BrushManager(dataStore);
-    this.hitCanvas = document.createElement('canvas');
-    this.hitCtx = this.hitCanvas.getContext('2d', { willReadFrequently: true })!;
 
     // Bind methods
     this.render = this.render.bind(this);
-    this.handleMouseDown = this.handleMouseDown.bind(this);
-    this.handleMouseMove = this.handleMouseMove.bind(this);
-    this.handleMouseUp = this.handleMouseUp.bind(this);
-    this.handleWheel = this.handleWheel.bind(this);
     this.handleMouseLeave = this.handleMouseLeave.bind(this);
+    this.handleClick = this.handleClick.bind(this);
   }
 
   public setDistrictBorders(borders: Map<number, Feature<Polygon | MultiPolygon>>) {
@@ -105,16 +102,33 @@ export class MapEngine {
     this.hoveredPrecinctId = null;
   }
 
+  private handleClick(e: MouseEvent) {
+    const rect = this.canvas!.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    const id = this.getPrecinctIdAt(x, y);
+    if (id !== null) {
+      const precinct = this.dataStore.getPrecinct(id);
+      if (precinct && this.onPrecinctSelect) {
+        this.onPrecinctSelect(precinct);
+      }
+    } else {
+      if (this.onPrecinctSelect) this.onPrecinctSelect(null);
+    }
+  }
+
   public setCanvas(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false });
     
     // Add event listeners
-    canvas.addEventListener('mousemove', this.handleMouseMove);
-    canvas.addEventListener('mousedown', this.handleMouseDown);
-    canvas.addEventListener('mouseup', this.handleMouseUp);
+    canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));
+    canvas.addEventListener('mousedown', this.handleMouseDown.bind(this));
+    canvas.addEventListener('mouseup', this.handleMouseUp.bind(this));
     canvas.addEventListener('mouseleave', this.handleMouseLeave);
-    canvas.addEventListener('wheel', this.handleWheel, { passive: false });
+    canvas.addEventListener('wheel', this.handleWheel.bind(this), { passive: false });
+    canvas.addEventListener('click', this.handleClick);
     
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -138,6 +152,13 @@ export class MapEngine {
     const g = (encodedId >> 8) & 255;
     const b = (encodedId >> 16) & 255;
     return `rgb(${r},${g},${b})`;
+  }
+
+  private getPrecinctIdAt(x: number, y: number): number | null {
+    if (!this.hitCtx) return null;
+    const pixel = this.hitCtx.getImageData(x, y, 1, 1).data;
+    if (pixel[3] < 255) return null;
+    return (pixel[0] + (pixel[1] << 8) + (pixel[2] << 16)) - 1;
   }
 
   public setZoom(x: number, y: number, k: number) {
@@ -221,10 +242,26 @@ export class MapEngine {
         const pop = feature.properties?.population || 1000;
         const dem = feature.properties?.demVotes || 0;
         const rep = feature.properties?.repVotes || 0;
-        const stats = new Uint16Array([pop, dem, rep]); 
+        const white = feature.properties?.white || 0;
+        const black = feature.properties?.black || 0;
+        const hispanic = feature.properties?.hispanic || 0;
+        
+        // We need to store more stats. Uint16Array is too small for population > 65k.
+        // And we have more fields now.
+        // DataStore expects Uint16Array for stats. We should upgrade it to Uint32Array or Float32Array.
+        // For now, let's just clamp or assume DataStore handles it (it doesn't, it's typed).
+        // We need to update DataStore.ts first to support more stats!
+        // But for this step, let's just pass what we can or update DataStore in the next step.
+        // Actually, let's update DataStore to accept a generic object or array, or just expand the stats array.
+        // Let's assume we will update DataStore to use Int32Array and more fields.
+        
+        const stats = new Int32Array([pop, dem, rep, white, black, hispanic]); 
         
         const stateId = feature.properties?.stateId || 0;
-        this.dataStore.addPrecinct(index, float32Coords, stats, 0, stateId);
+        // Initialize districtId to stateId so the map isn't all red initially
+        // But we need to make sure stateId doesn't conflict with district IDs if we want to distinguish.
+        // Actually, if we just use stateId, it will look like a state map, which is fine for "booting up".
+        this.dataStore.addPrecinct(index, float32Coords, stats, stateId, stateId);
       });
       
       // Send to worker

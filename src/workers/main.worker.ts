@@ -43,7 +43,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         // We ignore the payload districtCount and use the state apportionment
         
         // Group precincts by state
-        const statePrecincts = new Map<number, { id: number, districtId: number, population: number }[]>();
+        const statePrecincts = new Map<number, { id: number, districtId: number, population: number, x: number, y: number }[]>();
         
         precinctDistrictMap.forEach((districtId, precinctId) => {
           const stateId = precinctStateMap.get(precinctId);
@@ -51,10 +51,30 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
             if (!statePrecincts.has(stateId)) {
               statePrecincts.set(stateId, []);
             }
+            
+            // Calculate centroid
+            let x = 0, y = 0;
+            const coords = precinctCoordsMap.get(precinctId);
+            if (coords && coords.length > 0) {
+              let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+              for (let i = 0; i < coords.length; i += 2) {
+                const cx = coords[i];
+                const cy = coords[i+1];
+                if (cx < minX) minX = cx;
+                if (cy < minY) minY = cy;
+                if (cx > maxX) maxX = cx;
+                if (cy > maxY) maxY = cy;
+              }
+              x = (minX + maxX) / 2;
+              y = (minY + maxY) / 2;
+            }
+
             statePrecincts.get(stateId)?.push({
               id: precinctId,
               districtId,
-              population: precinctPopulationMap.get(precinctId) || 0
+              population: precinctPopulationMap.get(precinctId) || 0,
+              x,
+              y
             });
           }
         });
@@ -82,7 +102,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         break;
       }
       case 'SIMULATED_ANNEALING': {
-        const statePrecincts = new Map<number, { id: number, districtId: number, population: number }[]>();
+        const statePrecincts = new Map<number, { id: number, districtId: number, population: number, x: number, y: number }[]>();
         
         precinctDistrictMap.forEach((districtId, precinctId) => {
           const stateId = precinctStateMap.get(precinctId);
@@ -93,7 +113,9 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
             statePrecincts.get(stateId)?.push({
               id: precinctId,
               districtId,
-              population: precinctPopulationMap.get(precinctId) || 0
+              population: precinctPopulationMap.get(precinctId) || 0,
+              x: 0, // Not used for annealing yet
+              y: 0
             });
           }
         });

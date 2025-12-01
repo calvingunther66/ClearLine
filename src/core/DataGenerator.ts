@@ -10,42 +10,54 @@ export class DataGenerator {
     // Fetch 2020 Election Data (CSV)
     const electionPromise = fetch('https://raw.githubusercontent.com/tonmcg/US_County_Level_Election_Results_08-24/master/2020_US_County_Level_Presidential_Results.csv').then(r => r.text());
 
-    const [topology, electionCsv] = await Promise.all([topologyPromise, electionPromise]);
+    // Fetch Demographics Data (CSV)
+    const demoPromise = fetch('https://raw.githubusercontent.com/plotly/datasets/master/minoritymajority.csv').then(r => r.text());
+
+    const [topology, electionCsv, demoCsv] = await Promise.all([topologyPromise, electionPromise, demoPromise]);
 
     // Parse Election CSV
-    // Format: state_name,county_fips,county_name,votes_gop,votes_dem,total_votes,...
-    const electionData = new Map<number, { dem: number, rep: number, total: number }>();
-    
-    const lines = electionCsv.split('\n');
-    // Skip header
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
+    const electionData = new Map<number, { dem: number, rep: number }>();
+    const electionLines = electionCsv.split('\n');
+    for (let i = 1; i < electionLines.length; i++) {
+      const line = electionLines[i].trim();
       if (!line) continue;
-      
-      // Simple CSV split (assuming no commas in fields for this specific dataset, or simple enough)
-      // Actually county_name might have commas? The snippet shows "Autauga County".
-      // Let's assume standard CSV. If simple split fails, we might need regex.
-      // The snippet doesn't show quotes. Let's try simple split first.
       const parts = line.split(',');
-      
       if (parts.length >= 6) {
         const fips = parseInt(parts[1], 10);
         const rep = parseInt(parts[3], 10);
         const dem = parseInt(parts[4], 10);
-        const total = parseInt(parts[5], 10);
+        if (!isNaN(fips)) {
+          electionData.set(fips, { dem, rep });
+        }
+      }
+    }
+
+    // Parse Demographics CSV
+    // FIPS,STNAME,CTYNAME,TOT_POP,TOT_MALE,TOT_FEMALE,WA_MALE,WA_FEMALE,NHWA_MALE,NHWA_FEMALE,NHWhite_Alone,Not_NHWhite_Alone,MinorityMinority,MinorityPCT,Black,BlackPCT,Hispanic,HispanicPCT
+    const demoData = new Map<number, { pop: number, white: number, black: number, hispanic: number, asian: number }>();
+    const demoLines = demoCsv.split('\n');
+    for (let i = 1; i < demoLines.length; i++) {
+      const line = demoLines[i].trim();
+      if (!line) continue;
+      const parts = line.split(',');
+      if (parts.length >= 15) {
+        const fips = parseInt(parts[0], 10);
+        const pop = parseInt(parts[3], 10);
+        const white = parseInt(parts[10], 10); // NHWhite_Alone
+        const black = parseInt(parts[14], 10); // Black
+        const hispanic = parseInt(parts[16], 10); // Hispanic
+        // Asian is not explicitly in this CSV, we can infer "Other" or just use these 3
         
         if (!isNaN(fips)) {
-          electionData.set(fips, { dem, rep, total });
+          demoData.set(fips, { pop, white, black, hispanic, asian: 0 });
         }
       }
     }
 
     // Convert to GeoJSON
-    // The topojson types are a bit loose, so we cast to unknown then FeatureCollection
     const geojson = topojson.feature(topology, topology.objects.counties) as unknown as FeatureCollection<Geometry>;
     
     // Setup Projection (Albers USA)
-    // Fit to a hypothetical 1000x600 canvas to normalize coordinates
     const width = 1000;
     const height = 600;
     const projection = geoAlbersUsa().scale(1300).translate([width / 2, height / 2]);
@@ -54,13 +66,7 @@ export class DataGenerator {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
     geojson.features.forEach((feature) => {
-      // We need to project the coordinates manually or use the path generator to get the SVG path
-      // But for our canvas engine, we want raw coordinates.
-      // d3-geo projection can project [lon, lat] -> [x, y]
-      
       const geometry = feature.geometry;
-      // We'll construct the new coordinates array. 
-      // It will match the structure of Polygon (Position[][]) or MultiPolygon (Position[][][])
       const newCoordinates: number[][][] | number[][][][] = [];
 
       const projectRing = (ring: number[][]) => {
@@ -100,29 +106,32 @@ export class DataGenerator {
         const id = Number(feature.id);
         const stateId = Math.floor(id / 1000);
         
-        // Get real election data
-        const voteData = electionData.get(id);
+        // Get real data
+        const vote = electionData.get(id);
+        const demo = demoData.get(id);
         
-        let population, demVotes, repVotes;
-        
-        if (voteData) {
-          demVotes = voteData.dem;
-          repVotes = voteData.rep;
-          // Estimate population from votes (approx 66% turnout?) or just use total votes as proxy for now
-          // The user wants "voting data", so using total votes as the weight for redistricting is actually better for political fairness than raw population (one person one vote).
-          // But usually redistricting is based on total population.
-          // Let's use total votes * 1.5 as a rough population proxy if we don't have it, 
-          // or just use the random population if we want to keep that separate.
-          // Actually, let's use total votes as the "population" metric for the algorithm for now, 
-          // as it reflects the voting weight.
-          population = voteData.total; 
+        let population = 0, demVotes = 0, repVotes = 0;
+        let white = 0, black = 0, hispanic = 0;
+
+        if (demo) {
+          population = demo.pop;
+          white = demo.white;
+          black = demo.black;
+          hispanic = demo.hispanic;
         } else {
-          // Fallback
+          // Fallback population
           population = Math.floor(Math.random() * 50000) + 1000;
+        }
+
+        if (vote) {
+          demVotes = vote.dem;
+          repVotes = vote.rep;
+        } else {
+          // Fallback votes based on population density proxy
           const popFactor = Math.min(population / 40000, 1);
           const demProb = 0.3 + (popFactor * 0.4);
-          demVotes = Math.floor(population * demProb);
-          repVotes = population - demVotes;
+          demVotes = Math.floor(population * 0.6 * demProb); // Assume 60% turnout
+          repVotes = Math.floor(population * 0.6) - demVotes;
         }
 
         features.push({
@@ -133,7 +142,10 @@ export class DataGenerator {
             stateId: stateId,
             population,
             demVotes,
-            repVotes
+            repVotes,
+            white,
+            black,
+            hispanic
           },
           geometry: {
             type: geometry.type as 'Polygon' | 'MultiPolygon',

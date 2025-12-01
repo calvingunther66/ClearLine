@@ -3,35 +3,48 @@ export interface AlgorithmConfig {
 }
 
 export function seedAndGrow(
-  precincts: { id: number; districtId: number; population: number }[],
+  precincts: { id: number; districtId: number; population: number; x: number; y: number }[],
   config: AlgorithmConfig
 ): Map<number, number> {
   const { districtCount } = config;
   const newDistricts = new Map<number, number>();
-  const unassigned = new Set(precincts.map(p => p.id));
   
-  // 1. Seed
-  const seeds: number[] = [];
+  // 1. Pick Random Seeds as Centers
+  const centers: { x: number, y: number, id: number }[] = [];
+  const usedSeeds = new Set<number>();
+  
   for (let i = 0; i < districtCount; i++) {
-    if (unassigned.size === 0) break;
-    const randomIdx = Math.floor(Math.random() * unassigned.size);
-    const precinctId = Array.from(unassigned)[randomIdx];
-    seeds.push(precinctId);
-    newDistricts.set(precinctId, i + 1); // 1-based district IDs
-    unassigned.delete(precinctId);
+    let attempts = 0;
+    while (attempts < 100) {
+      const randomIdx = Math.floor(Math.random() * precincts.length);
+      const p = precincts[randomIdx];
+      if (!usedSeeds.has(p.id)) {
+        centers.push({ x: p.x, y: p.y, id: i + 1 });
+        usedSeeds.add(p.id);
+        break;
+      }
+      attempts++;
+    }
   }
 
-  // 2. Grow (Simplified: Random assignment to nearest neighbor would be better, 
-  // but for now just random assignment to remaining)
-  // In a real implementation, we need adjacency graph.
-  // Since we don't have adjacency graph built yet in the worker, 
-  // we will simulate "growth" by just assigning remaining precincts to random districts for now
-  // to prove the worker pipeline works. 
-  // TODO: Build adjacency graph in DataStore/Worker for real spatial growth.
+  // 2. Assign every precinct to nearest center (Voronoi-like)
+  // This is a simple 1-pass assignment. For better results, we could iterate (K-Means).
+  // Let's do 1-pass for speed first.
   
-  unassigned.forEach(pid => {
-    const randomDistrict = Math.floor(Math.random() * districtCount) + 1;
-    newDistricts.set(pid, randomDistrict);
+  precincts.forEach(p => {
+    let minDist = Infinity;
+    let closestDistrict = 1;
+    
+    for (const center of centers) {
+      const dx = p.x - center.x;
+      const dy = p.y - center.y;
+      const distSq = dx*dx + dy*dy;
+      if (distSq < minDist) {
+        minDist = distSq;
+        closestDistrict = center.id;
+      }
+    }
+    newDistricts.set(p.id, closestDistrict);
   });
 
   return newDistricts;

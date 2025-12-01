@@ -9,9 +9,12 @@ import { DataStore } from './core/DataStore';
 // Singleton DataStore for the app
 const dataStore = new DataStore();
 
+import type { PrecinctData } from './core/DataStore';
+
 function App() {
   const [updateTrigger, setUpdateTrigger] = useState(0);
   const [viewMode, setViewMode] = useState<'district' | 'political'>('district');
+  const [selectedPrecinct, setSelectedPrecinct] = useState<PrecinctData | null>(null);
   const mapRef = useRef<MapCanvasHandle>(null);
 
   const handleUpdate = () => {
@@ -36,7 +39,12 @@ function App() {
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-slate-950 text-slate-50 font-sans selection:bg-blue-500/30">
-      <MapCanvas ref={mapRef} dataStore={dataStore} updateTrigger={updateTrigger} />
+      <MapCanvas 
+        ref={mapRef} 
+        dataStore={dataStore} 
+        updateTrigger={updateTrigger} 
+        onPrecinctSelect={setSelectedPrecinct}
+      />
       
       {/* Header / Branding */}
       <div className="absolute top-6 left-6 pointer-events-none select-none z-50">
@@ -61,7 +69,7 @@ function App() {
       </div>
 
       <PerformanceMonitor />
-      <StatsPanel />
+      <StatsPanel selectedPrecinct={selectedPrecinct} />
       <ControlsPanel 
         dataStore={dataStore} 
         onUpdate={handleUpdate} 
