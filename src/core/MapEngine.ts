@@ -200,11 +200,13 @@ export class MapEngine {
         let coords: number[] = [];
         
         if (geometry.type === 'Polygon') {
-          coords = (geometry.coordinates[0] as any[]).flat();
+          const poly = geometry as Polygon;
+          coords = (poly.coordinates[0] as number[][]).flat();
         } else if (geometry.type === 'MultiPolygon') {
           // Flatten all polygons? Or just take the first?
           // Taking the first is safest for now to avoid rendering artifacts with simple line drawing
-          coords = (geometry.coordinates[0][0] as any[]).flat();
+          const multiPoly = geometry as MultiPolygon;
+          coords = (multiPoly.coordinates[0][0] as number[][]).flat();
         }
 
         const float32Coords = new Float32Array(coords);

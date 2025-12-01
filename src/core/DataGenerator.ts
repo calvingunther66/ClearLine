@@ -1,6 +1,6 @@
 import * as topojson from 'topojson-client';
 import { geoAlbersUsa } from 'd3-geo';
-import type { Feature, Polygon, MultiPolygon } from 'geojson';
+import type { Feature, Polygon, MultiPolygon, FeatureCollection, Geometry } from 'geojson';
 
 export class DataGenerator {
   static async loadUSData(): Promise<{ features: Feature<Polygon | MultiPolygon>[], bounds: [number, number, number, number] }> {
@@ -9,7 +9,8 @@ export class DataGenerator {
     const topology = await response.json();
 
     // Convert to GeoJSON
-    const geojson = topojson.feature(topology, topology.objects.counties) as any;
+    // The topojson types are a bit loose, so we cast to unknown then FeatureCollection
+    const geojson = topojson.feature(topology, topology.objects.counties) as unknown as FeatureCollection<Geometry>;
     
     // Setup Projection (Albers USA)
     // Fit to a hypothetical 1000x600 canvas to normalize coordinates
@@ -20,13 +21,15 @@ export class DataGenerator {
     const features: Feature<Polygon | MultiPolygon>[] = [];
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
-    geojson.features.forEach((feature: any) => {
+    geojson.features.forEach((feature) => {
       // We need to project the coordinates manually or use the path generator to get the SVG path
       // But for our canvas engine, we want raw coordinates.
       // d3-geo projection can project [lon, lat] -> [x, y]
       
       const geometry = feature.geometry;
-      const newCoordinates: any[] = [];
+      // We'll construct the new coordinates array. 
+      // It will match the structure of Polygon (Position[][]) or MultiPolygon (Position[][][])
+      const newCoordinates: number[][][] | number[][][][] = [];
 
       const projectRing = (ring: number[][]) => {
         const projectedRing: number[][] = [];
@@ -44,18 +47,20 @@ export class DataGenerator {
       };
 
       if (geometry.type === 'Polygon') {
-        geometry.coordinates.forEach((ring: number[][]) => {
+        const poly = geometry as Polygon;
+        poly.coordinates.forEach((ring) => {
           const projRing = projectRing(ring);
-          if (projRing.length > 0) newCoordinates.push(projRing);
+          if (projRing.length > 0) (newCoordinates as number[][][]).push(projRing);
         });
       } else if (geometry.type === 'MultiPolygon') {
-        geometry.coordinates.forEach((poly: number[][][]) => {
+        const multiPoly = geometry as MultiPolygon;
+        multiPoly.coordinates.forEach((poly) => {
           const newPoly: number[][][] = [];
-          poly.forEach((ring: number[][]) => {
+          poly.forEach((ring) => {
             const projRing = projectRing(ring);
             if (projRing.length > 0) newPoly.push(projRing);
           });
-          if (newPoly.length > 0) newCoordinates.push(newPoly as any);
+          if (newPoly.length > 0) (newCoordinates as number[][][][]).push(newPoly);
         });
       }
 
@@ -69,9 +74,9 @@ export class DataGenerator {
             population: Math.floor(Math.random() * 50000) + 1000
           },
           geometry: {
-            type: geometry.type,
+            type: geometry.type as 'Polygon' | 'MultiPolygon',
             coordinates: newCoordinates
-          } as any
+          } as Polygon | MultiPolygon
         });
       }
     });
