@@ -16,12 +16,12 @@ export class SpatialIndex {
     this.tree = new RBush();
   }
 
-  public insert(id: number, bbox: BBox) {
+  public insert(id: number, minX: number, minY: number, maxX: number, maxY: number) {
     const item: SpatialItem = {
-      minX: bbox[0],
-      minY: bbox[1],
-      maxX: bbox[2],
-      maxY: bbox[3],
+      minX,
+      minY,
+      maxX,
+      maxY,
       id
     };
     this.tree.insert(item);

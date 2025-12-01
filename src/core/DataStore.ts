@@ -1,24 +1,25 @@
-import type { PrecinctData } from './types';
-import { spatialIndex } from './SpatialIndex';
+import { SpatialIndex } from './SpatialIndex';
+
+export interface PrecinctData {
+  id: number;
+  coords: Float32Array;
+  stats: Uint16Array; // [Population, DemVotes, RepVotes]
+  districtId: number;
+  stateId: number;
+  bounds: { minX: number; minY: number; maxX: number; maxY: number };
+}
 
 export class DataStore {
   private precincts: Map<number, PrecinctData> = new Map();
   private districtStats: Map<number, Uint16Array> = new Map();
+  private spatialIndex: SpatialIndex = new SpatialIndex();
 
   constructor() {
     // Initialize with empty state
   }
 
-  public addPrecinct(id: number, coords: Float32Array, stats: Uint16Array, districtId: number) {
-    const precinct: PrecinctData = {
-      id,
-      coords,
-      stats,
-      districtId
-    };
-    this.precincts.set(id, precinct);
-
-    // Calculate bbox
+  public addPrecinct(id: number, coords: Float32Array, stats: Uint16Array, districtId: number, stateId: number) {
+    // Calculate bounds
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (let i = 0; i < coords.length; i += 2) {
       const x = coords[i];
@@ -28,8 +29,18 @@ export class DataStore {
       if (x > maxX) maxX = x;
       if (y > maxY) maxY = y;
     }
+
+    const precinct: PrecinctData = {
+      id,
+      coords,
+      stats,
+      districtId,
+      stateId,
+      bounds: { minX, minY, maxX, maxY }
+    };
+    this.precincts.set(id, precinct);
     
-    spatialIndex.insert(id, [minX, minY, maxX, maxY]);
+    this.spatialIndex.insert(id, minX, minY, maxX, maxY);
   }
 
   public getPrecinct(id: number): PrecinctData | undefined {

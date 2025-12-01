@@ -215,7 +215,8 @@ export class MapEngine {
         const pop = feature.properties?.population || 1000;
         const stats = new Uint16Array([pop, 0, 0]); // Pop, Dem, Rep (dummy)
         
-        this.dataStore.addPrecinct(index, float32Coords, stats, 0);
+        const stateId = feature.properties?.stateId || 0;
+        this.dataStore.addPrecinct(index, float32Coords, stats, 0, stateId);
       });
       
       // Send to worker
@@ -223,6 +224,7 @@ export class MapEngine {
         id: p.id,
         population: p.stats[0],
         districtId: p.districtId,
+        stateId: p.stateId,
         coords: Array.from(p.coords)
       }));
       workerManager.sendMessage('LOAD_DATA', { precincts: precinctPayload });
@@ -281,8 +283,11 @@ export class MapEngine {
         
         // Draw Main
         // Color based on district
-        const districtColors = ['#1f2937', '#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6'];
-        ctx.fillStyle = districtColors[precinct.districtId] || '#1f2937';
+        const districtColors = ['#1f2937', '#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#6366f1', '#14b8a6', '#f97316'];
+        // Use modulo to cycle colors, but ensure unique-ish colors for adjacent districts (simple modulo is usually enough for this demo)
+        // We use districtId % colors.length
+        const colorIndex = precinct.districtId % districtColors.length;
+        ctx.fillStyle = districtColors[colorIndex] || '#1f2937';
         
         ctx.fill();
         ctx.stroke();

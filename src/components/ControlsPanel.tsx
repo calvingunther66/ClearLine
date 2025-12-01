@@ -42,7 +42,7 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({ dataStore, onUpdat
         >
           <div className="absolute inset-0 bg-gradient-to-r from-blue-600/0 via-blue-600/10 to-blue-600/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wide">Seed & Grow</span>
+            <span className="text-xs font-bold uppercase tracking-wide">Auto Redistrict (US)</span>
             {isRedistricting && <span className="w-2 h-2 bg-blue-400 rounded-full animate-ping"></span>}
           </div>
         </button>

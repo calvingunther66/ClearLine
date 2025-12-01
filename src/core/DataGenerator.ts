@@ -65,11 +65,15 @@ export class DataGenerator {
       }
 
       if (newCoordinates.length > 0) {
+        const id = Number(feature.id);
+        const stateId = Math.floor(id / 1000);
+        
         features.push({
           type: 'Feature',
-          id: Number(feature.id), // FIPS code
+          id: id,
           properties: {
             ...feature.properties,
+            stateId: stateId,
             // Generate synthetic population based on FIPS or random
             population: Math.floor(Math.random() * 50000) + 1000
           },

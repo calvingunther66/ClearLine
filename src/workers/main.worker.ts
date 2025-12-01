@@ -3,13 +3,15 @@ import { runAnalysis } from '../core/analysis';
 import { seedAndGrow, simulatedAnnealing } from '../core/algorithms';
 import * as turf from '@turf/turf';
 import type { Feature, Polygon, MultiPolygon } from 'geojson';
+import { STATE_APPORTIONMENT } from '../core/Apportionment';
 
 // Worker State
 const precinctDistrictMap = new Map<number, number>();
 const precinctPopulationMap = new Map<number, number>();
+const precinctStateMap = new Map<number, number>();
 const precinctCoordsMap = new Map<number, number[]>(); // Store coords for border generation
 
-self.onmessage = (e: MessageEvent<WorkerMessage>) => {
+self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
   const { id, type, payload } = e.data;
 
   try {
@@ -19,10 +21,11 @@ self.onmessage = (e: MessageEvent<WorkerMessage>) => {
         result = 'PONG';
         break;
       case 'LOAD_DATA': {
-        const { precincts } = payload as { precincts: { id: number, population: number, districtId: number, coords: number[] }[] };
+        const { precincts } = payload as { precincts: { id: number, population: number, districtId: number, stateId: number, coords: number[] }[] };
         precincts.forEach(p => {
           precinctDistrictMap.set(p.id, p.districtId);
           precinctPopulationMap.set(p.id, p.population);
+          precinctStateMap.set(p.id, p.stateId);
           if (p.coords) {
             precinctCoordsMap.set(p.id, p.coords);
           }
@@ -37,42 +40,81 @@ self.onmessage = (e: MessageEvent<WorkerMessage>) => {
         break;
       }
       case 'AUTO_REDISTRICT': {
-        const { districtCount } = payload as { districtCount: number };
+        // We ignore the payload districtCount and use the state apportionment
         
-        // Prepare data for algorithm
-        const precincts = Array.from(precinctDistrictMap.entries()).map(([id, districtId]) => ({
-          id,
-          districtId,
-          population: precinctPopulationMap.get(id) || 0
-        }));
+        // Group precincts by state
+        const statePrecincts = new Map<number, { id: number, districtId: number, population: number }[]>();
         
-        const newAssignment = seedAndGrow(precincts, { districtCount });
-        
-        // Update internal state
-        newAssignment.forEach((districtId, precinctId) => {
-          precinctDistrictMap.set(precinctId, districtId);
+        precinctDistrictMap.forEach((districtId, precinctId) => {
+          const stateId = precinctStateMap.get(precinctId);
+          if (stateId !== undefined) {
+            if (!statePrecincts.has(stateId)) {
+              statePrecincts.set(stateId, []);
+            }
+            statePrecincts.get(stateId)?.push({
+              id: precinctId,
+              districtId,
+              population: precinctPopulationMap.get(precinctId) || 0
+            });
+          }
+        });
+
+        const allUpdates: { id: number; districtId: number }[] = [];
+
+        // Run algorithm for each state
+        statePrecincts.forEach((precincts, stateId) => {
+          const apportionment = STATE_APPORTIONMENT[stateId];
+          if (!apportionment) return; // Skip unknown states
+
+          const districtCount = apportionment.districts;
+          
+          const newAssignment = seedAndGrow(precincts, { districtCount });
+          
+          newAssignment.forEach((localDistrictId, precinctId) => {
+            // Create a unique global district ID: stateId * 100 + localDistrictId
+            const globalDistrictId = stateId * 100 + localDistrictId;
+            allUpdates.push({ id: precinctId, districtId: globalDistrictId });
+            precinctDistrictMap.set(precinctId, globalDistrictId);
+          });
         });
         
-        // Return updates to main thread
-        result = Array.from(newAssignment.entries()).map(([id, districtId]) => ({ id, districtId }));
+        result = allUpdates;
         break;
       }
       case 'SIMULATED_ANNEALING': {
-        const { districtCount } = payload as { districtCount: number };
+        const statePrecincts = new Map<number, { id: number, districtId: number, population: number }[]>();
         
-        const precincts = Array.from(precinctDistrictMap.entries()).map(([id, districtId]) => ({
-          id,
-          districtId,
-          population: precinctPopulationMap.get(id) || 0
-        }));
-        
-        const newAssignment = simulatedAnnealing(precincts, { districtCount });
-        
-        newAssignment.forEach((districtId, precinctId) => {
-          precinctDistrictMap.set(precinctId, districtId);
+        precinctDistrictMap.forEach((districtId, precinctId) => {
+          const stateId = precinctStateMap.get(precinctId);
+          if (stateId !== undefined) {
+            if (!statePrecincts.has(stateId)) {
+              statePrecincts.set(stateId, []);
+            }
+            statePrecincts.get(stateId)?.push({
+              id: precinctId,
+              districtId,
+              population: precinctPopulationMap.get(precinctId) || 0
+            });
+          }
+        });
+
+        const allUpdates: { id: number; districtId: number }[] = [];
+
+        statePrecincts.forEach((precincts, stateId) => {
+          const apportionment = STATE_APPORTIONMENT[stateId];
+          if (!apportionment) return;
+
+          const districtCount = apportionment.districts;
+          const newAssignment = simulatedAnnealing(precincts, { districtCount });
+          
+          newAssignment.forEach((localDistrictId, precinctId) => {
+            const globalDistrictId = stateId * 100 + localDistrictId;
+            allUpdates.push({ id: precinctId, districtId: globalDistrictId });
+            precinctDistrictMap.set(precinctId, globalDistrictId);
+          });
         });
         
-        result = Array.from(newAssignment.entries()).map(([id, districtId]) => ({ id, districtId }));
+        result = allUpdates;
         break;
       }
       case 'GENERATE_BORDERS': {
