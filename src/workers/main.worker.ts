@@ -102,7 +102,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         break;
       }
       case 'SIMULATED_ANNEALING': {
-        const { constraints, runs = 1 } = payload as { constraints: Constraint[], runs?: number };
+        const { constraints, runs: userRuns = 1, isAuto = false } = payload as { constraints: Constraint[], runs?: number, isAuto?: boolean };
         const statePrecincts = new Map<number, { id: number, districtId: number, population: number, x: number, y: number, stats: number[] }[]>();
         
         precinctDistrictMap.forEach((districtId, precinctId) => {
@@ -123,6 +123,15 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         });
 
         const allUpdates: { id: number; districtId: number }[] = [];
+
+        // Determine runs
+        let runs = userRuns;
+        if (isAuto) {
+          // Heuristic: Base 100 + 500 per constraint
+          runs = 100 + (constraints.length * 500);
+        }
+        // Cap at 100,000
+        runs = Math.min(runs, 100000);
 
         statePrecincts.forEach((precincts, stateId) => {
           const apportionment = STATE_APPORTIONMENT[stateId];

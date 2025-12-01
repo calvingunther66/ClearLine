@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
-import { DataStore } from '../core/DataStore';
+
 
 interface ControlsPanelProps {
-  dataStore: DataStore;
   onUpdate: () => void;
   onGenerateBorders: () => void;
   viewMode: 'district' | 'political';
   onSetViewMode: (mode: 'district' | 'political') => void;
-  onAutoRedistrict: (runs: number) => Promise<void>;
+  onAutoRedistrict: (config: { runs: number; isAuto: boolean }) => Promise<void>;
 }
 
 export const ControlsPanel: React.FC<ControlsPanelProps> = ({ 
@@ -19,11 +18,12 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
 }) => {
   const [isRedistricting, setIsRedistricting] = useState(false);
   const [runs, setRuns] = useState(1);
+  const [isAuto, setIsAuto] = useState(false);
 
   const handleRedistrictClick = async () => {
     setIsRedistricting(true);
     try {
-      await onAutoRedistrict(runs);
+      await onAutoRedistrict({ runs, isAuto });
       onUpdate();
     } catch (e) {
       console.error(e);
@@ -63,14 +63,26 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
       
       <div className="space-y-3">
         <div className="flex items-center justify-between bg-slate-800/50 p-2 rounded border border-slate-700 mb-2">
-          <span className="text-xs text-slate-300">Ensemble Runs</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-300">Ensemble Runs</span>
+            <label className="flex items-center gap-1 cursor-pointer">
+              <input 
+                type="checkbox" 
+                checked={isAuto} 
+                onChange={(e) => setIsAuto(e.target.checked)}
+                className="w-3 h-3 rounded border-slate-600 text-blue-600 focus:ring-0 focus:ring-offset-0 bg-slate-900"
+              />
+              <span className="text-[10px] text-slate-400 uppercase font-bold">Auto</span>
+            </label>
+          </div>
           <input 
             type="number" 
             min="1" 
-            max="20" 
+            max="100000" 
             value={runs} 
-            onChange={(e) => setRuns(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
-            className="w-12 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-right text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+            disabled={isAuto}
+            onChange={(e) => setRuns(Math.max(1, Math.min(100000, parseInt(e.target.value) || 1)))}
+            className={`w-16 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-right text-xs text-slate-200 focus:outline-none focus:border-blue-500 ${isAuto ? 'opacity-50 cursor-not-allowed' : ''}`}
           />
         </div>
 

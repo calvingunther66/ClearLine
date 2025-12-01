@@ -402,11 +402,11 @@ export class MapEngine {
     hitCtx.restore();
   }
 
-  public async startAutoRedistrict(constraints: Constraint[] = [], runs: number = 1) {
+  public async startAutoRedistrict(constraints: Constraint[] = [], config: { runs: number; isAuto: boolean } = { runs: 1, isAuto: false }) {
     try {
       const messageType = constraints.length > 0 ? 'SIMULATED_ANNEALING' : 'AUTO_REDISTRICT';
       
-      const result = await workerManager.sendMessage(messageType, { constraints, runs });
+      const result = await workerManager.sendMessage(messageType, { constraints, runs: config.runs, isAuto: config.isAuto });
       
       const updates = result as { id: number, districtId: number }[];
       updates.forEach(u => {

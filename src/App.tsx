@@ -24,9 +24,9 @@ function App() {
     }
   }, []);
 
-  const handleAutoRedistrict = async (runs: number = 1) => {
+  const handleAutoRedistrict = async (config: { runs: number; isAuto: boolean }) => {
     if (mapRef.current) {
-      mapRef.current.startAutoRedistrict(constraints, runs);
+      mapRef.current.startAutoRedistrict(constraints, config);
     }
   };
 
@@ -85,7 +85,6 @@ function App() {
       <StatsPanel selectedPrecinct={selectedPrecinct} />
       <ConstraintsPanel constraints={constraints} onConstraintsChange={setConstraints} />
       <ControlsPanel 
-        dataStore={dataStore} 
         onUpdate={handleUpdate} 
         onGenerateBorders={handleGenerateBorders}
         viewMode={viewMode}
