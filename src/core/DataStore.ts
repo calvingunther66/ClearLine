@@ -3,7 +3,7 @@ import { SpatialIndex } from './SpatialIndex';
 export interface PrecinctData {
   id: number;
   coords: Float32Array;
-  stats: Int32Array; // [Pop, Dem, Rep, White, Black, Hispanic]
+  stats: Int32Array; // [Pop, Dem, Rep, White, Black, Hispanic, Education, Income]
   districtId: number;
   stateId: number;
   bounds: { minX: number; minY: number; maxX: number; maxY: number };

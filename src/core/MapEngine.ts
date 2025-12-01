@@ -245,29 +245,19 @@ export class MapEngine {
         const white = feature.properties?.white || 0;
         const black = feature.properties?.black || 0;
         const hispanic = feature.properties?.hispanic || 0;
+        const education = feature.properties?.education || 0;
+        const income = feature.properties?.income || 0;
         
-        // We need to store more stats. Uint16Array is too small for population > 65k.
-        // And we have more fields now.
-        // DataStore expects Uint16Array for stats. We should upgrade it to Uint32Array or Float32Array.
-        // For now, let's just clamp or assume DataStore handles it (it doesn't, it's typed).
-        // We need to update DataStore.ts first to support more stats!
-        // But for this step, let's just pass what we can or update DataStore in the next step.
-        // Actually, let's update DataStore to accept a generic object or array, or just expand the stats array.
-        // Let's assume we will update DataStore to use Int32Array and more fields.
-        
-        const stats = new Int32Array([pop, dem, rep, white, black, hispanic]); 
+        const stats = new Int32Array([pop, dem, rep, white, black, hispanic, education, income]); 
         
         const stateId = feature.properties?.stateId || 0;
-        // Initialize districtId to stateId so the map isn't all red initially
-        // But we need to make sure stateId doesn't conflict with district IDs if we want to distinguish.
-        // Actually, if we just use stateId, it will look like a state map, which is fine for "booting up".
         this.dataStore.addPrecinct(index, float32Coords, stats, stateId, stateId);
       });
       
       // Send to worker
       const precinctPayload = Array.from(this.dataStore.getAllPrecincts()).map(p => ({
         id: p.id,
-        population: p.stats[0],
+        stats: Array.from(p.stats), // Send full stats
         districtId: p.districtId,
         stateId: p.stateId,
         coords: Array.from(p.coords)

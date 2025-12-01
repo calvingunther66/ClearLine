@@ -7,7 +7,7 @@ import { STATE_APPORTIONMENT } from '../core/Apportionment';
 
 // Worker State
 const precinctDistrictMap = new Map<number, number>();
-const precinctPopulationMap = new Map<number, number>();
+const precinctStatsMap = new Map<number, number[]>(); // [pop, dem, rep, white, black, hispanic]
 const precinctStateMap = new Map<number, number>();
 const precinctCoordsMap = new Map<number, number[]>(); // Store coords for border generation
 
@@ -21,10 +21,10 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         result = 'PONG';
         break;
       case 'LOAD_DATA': {
-        const { precincts } = payload as { precincts: { id: number, population: number, districtId: number, stateId: number, coords: number[] }[] };
+        const { precincts } = payload as { precincts: { id: number, population: number, districtId: number, stateId: number, coords: number[], stats: number[] }[] };
         precincts.forEach(p => {
           precinctDistrictMap.set(p.id, p.districtId);
-          precinctPopulationMap.set(p.id, p.population);
+          precinctStatsMap.set(p.id, p.stats);
           precinctStateMap.set(p.id, p.stateId);
           if (p.coords) {
             precinctCoordsMap.set(p.id, p.coords);
@@ -72,7 +72,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
             statePrecincts.get(stateId)?.push({
               id: precinctId,
               districtId,
-              population: precinctPopulationMap.get(precinctId) || 0,
+              population: precinctStatsMap.get(precinctId)?.[0] || 0,
               x,
               y
             });
@@ -113,7 +113,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
             statePrecincts.get(stateId)?.push({
               id: precinctId,
               districtId,
-              population: precinctPopulationMap.get(precinctId) || 0,
+              population: precinctStatsMap.get(precinctId)?.[0] || 0,
               x: 0, // Not used for annealing yet
               y: 0
             });
@@ -193,16 +193,58 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
       }
       case 'RUN_ANALYSIS': {
         // Aggregate data from internal state
-        const districtPops = new Map<number, number>();
+        const districtStats = new Map<number, {
+          population: number,
+          demVotes: number,
+          repVotes: number,
+          white: number,
+          black: number,
+          hispanic: number,
+          educationProduct: number,
+          incomeProduct: number
+        }>();
         
         precinctDistrictMap.forEach((districtId, precinctId) => {
-          const pop = precinctPopulationMap.get(precinctId) || 0;
-          districtPops.set(districtId, (districtPops.get(districtId) || 0) + pop);
+          const stats = precinctStatsMap.get(precinctId);
+          if (!stats) return; // Should have stats
+
+          if (!districtStats.has(districtId)) {
+            districtStats.set(districtId, {
+              population: 0,
+              demVotes: 0,
+              repVotes: 0,
+              white: 0,
+              black: 0,
+              hispanic: 0,
+              educationProduct: 0,
+              incomeProduct: 0
+            });
+          }
+          
+          const d = districtStats.get(districtId)!;
+          // Stats array: [pop, dem, rep, white, black, hispanic, education, income]
+          const pop = stats[0];
+          d.population += pop;
+          d.demVotes += stats[1];
+          d.repVotes += stats[2];
+          d.white += stats[3];
+          d.black += stats[4];
+          d.hispanic += stats[5];
+          d.educationProduct += (stats[6] || 0) * pop;
+          d.incomeProduct += (stats[7] || 0) * pop;
         });
         
-        const districts = Array.from(districtPops.entries()).map(([id, population]) => ({
+        const districts = Array.from(districtStats.entries()).map(([id, s]) => ({
           id,
-          population
+          population: s.population,
+          demVotes: s.demVotes,
+          repVotes: s.repVotes,
+          white: s.white,
+          black: s.black,
+          hispanic: s.hispanic,
+          education: s.population > 0 ? s.educationProduct / s.population : 0,
+          income: s.population > 0 ? s.incomeProduct / s.population : 0,
+          efficiencyGap: 0 // Calculated in runAnalysis
         }));
         result = runAnalysis({ districts });
         break;

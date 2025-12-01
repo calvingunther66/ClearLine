@@ -13,7 +13,10 @@ export class DataGenerator {
     // Fetch Demographics Data (CSV)
     const demoPromise = fetch('https://raw.githubusercontent.com/plotly/datasets/master/minoritymajority.csv').then(r => r.text());
 
-    const [topology, electionCsv, demoCsv] = await Promise.all([topologyPromise, electionPromise, demoPromise]);
+    // Fetch Education/Income Data (CSV)
+    const eduIncPromise = fetch('https://raw.githubusercontent.com/JieYingWu/COVID-19_US_County-level_Summaries/master/data/counties.csv').then(r => r.text());
+
+    const [topology, electionCsv, demoCsv, eduIncCsv] = await Promise.all([topologyPromise, electionPromise, demoPromise, eduIncPromise]);
 
     // Parse Election CSV
     const electionData = new Map<number, { dem: number, rep: number }>();
@@ -22,10 +25,10 @@ export class DataGenerator {
       const line = electionLines[i].trim();
       if (!line) continue;
       const parts = line.split(',');
-      if (parts.length >= 6) {
-        const fips = parseInt(parts[1], 10);
-        const rep = parseInt(parts[3], 10);
-        const dem = parseInt(parts[4], 10);
+      if (parts.length >= 10) {
+        const fips = parseInt(parts[1], 10); // county_fips
+        const dem = parseInt(parts[4], 10); // votes_dem
+        const rep = parseInt(parts[5], 10); // votes_gop
         if (!isNaN(fips)) {
           electionData.set(fips, { dem, rep });
         }
@@ -33,8 +36,7 @@ export class DataGenerator {
     }
 
     // Parse Demographics CSV
-    // FIPS,STNAME,CTYNAME,TOT_POP,TOT_MALE,TOT_FEMALE,WA_MALE,WA_FEMALE,NHWA_MALE,NHWA_FEMALE,NHWhite_Alone,Not_NHWhite_Alone,MinorityMinority,MinorityPCT,Black,BlackPCT,Hispanic,HispanicPCT
-    const demoData = new Map<number, { pop: number, white: number, black: number, hispanic: number, asian: number }>();
+    const demoData = new Map<number, { pop: number, white: number, black: number, hispanic: number }>();
     const demoLines = demoCsv.split('\n');
     for (let i = 1; i < demoLines.length; i++) {
       const line = demoLines[i].trim();
@@ -46,10 +48,48 @@ export class DataGenerator {
         const white = parseInt(parts[10], 10); // NHWhite_Alone
         const black = parseInt(parts[14], 10); // Black
         const hispanic = parseInt(parts[16], 10); // Hispanic
-        // Asian is not explicitly in this CSV, we can infer "Other" or just use these 3
         
         if (!isNaN(fips)) {
-          demoData.set(fips, { pop, white, black, hispanic, asian: 0 });
+          demoData.set(fips, { pop, white, black, hispanic });
+        }
+      }
+    }
+
+    // Parse Education/Income CSV
+    // FIPS is col 0
+    // "Percent of adults with a bachelor's degree or higher 2014-18" is col 29 (approx)
+    // "Median_Household_Income_2018" is col 48 (approx)
+    // We need to be careful about commas in quoted fields. 
+    // For now, let's assume standard CSV splitting works for these numeric columns if they are far enough right.
+    // Actually, let's use a smarter regex split or just find the headers.
+    
+    const eduIncData = new Map<number, { education: number, income: number }>();
+    const eduIncLines = eduIncCsv.split('\n');
+    const headers = eduIncLines[0].split(',');
+    const eduIdx = headers.findIndex((h: string) => h.includes("Percent of adults with a bachelor's degree or higher"));
+    const incIdx = headers.findIndex((h: string) => h.includes("Median_Household_Income_2018"));
+
+    if (eduIdx !== -1 && incIdx !== -1) {
+      for (let i = 1; i < eduIncLines.length; i++) {
+        const line = eduIncLines[i].trim();
+        if (!line) continue;
+        // Simple split might fail on quoted strings. 
+        // Let's try to handle it roughly:
+        // The FIPS is first. The data we want is numbers.
+        // If we split by comma, we might get shifted indices.
+        // Let's use a regex for splitting that respects quotes.
+        const parts = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || line.split(',');
+        // Clean up parts (remove quotes)
+        const cleanParts = parts.map((p: string) => p.replace(/^"|"$/g, '').trim());
+        
+        // FIPS is usually first, but check header? Header says FIPS is 0.
+        const fips = parseInt(cleanParts[0], 10);
+        if (!isNaN(fips)) {
+           const edu = parseFloat(cleanParts[eduIdx]);
+           const inc = parseInt(cleanParts[incIdx], 10);
+           if (!isNaN(edu) && !isNaN(inc)) {
+             eduIncData.set(fips, { education: Math.round(edu), income: inc });
+           }
         }
       }
     }
@@ -109,9 +149,11 @@ export class DataGenerator {
         // Get real data
         const vote = electionData.get(id);
         const demo = demoData.get(id);
+        const eduInc = eduIncData.get(id);
         
         let population = 0, demVotes = 0, repVotes = 0;
         let white = 0, black = 0, hispanic = 0;
+        let education = 0, income = 0;
 
         if (demo) {
           population = demo.pop;
@@ -133,6 +175,14 @@ export class DataGenerator {
           demVotes = Math.floor(population * 0.6 * demProb); // Assume 60% turnout
           repVotes = Math.floor(population * 0.6) - demVotes;
         }
+        
+        if (eduInc) {
+          education = eduInc.education;
+          income = eduInc.income;
+        } else {
+          education = 20 + Math.floor(Math.random() * 20);
+          income = 40000 + Math.floor(Math.random() * 40000);
+        }
 
         features.push({
           type: 'Feature',
@@ -145,7 +195,9 @@ export class DataGenerator {
             repVotes,
             white,
             black,
-            hispanic
+            hispanic,
+            education,
+            income
           },
           geometry: {
             type: geometry.type as 'Polygon' | 'MultiPolygon',

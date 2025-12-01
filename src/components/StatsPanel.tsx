@@ -83,13 +83,32 @@ export const StatsPanel: React.FC<StatsPanelProps> = ({ selectedPrecinct }) => {
       </h2>
       <div className="space-y-3">
         {stats.map((s) => (
-          <div key={s.id} className="flex justify-between items-center text-sm group hover:bg-white/5 p-2 rounded transition-colors">
-            <span className="text-blue-400 font-medium group-hover:text-blue-300">District {s.id}</span>
-            <div className="flex flex-col items-end">
+          <div key={s.id} className="flex flex-col text-sm group hover:bg-white/5 p-2 rounded transition-colors border border-transparent hover:border-slate-700/50">
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-blue-400 font-medium group-hover:text-blue-300">District {s.id}</span>
               <span className="text-slate-300 font-mono text-xs">{s.population.toLocaleString()} pop</span>
-              <span className={`text-xs font-bold ${s.efficiencyGap > 0 ? "text-red-400" : "text-emerald-400"}`}>
+            </div>
+            
+            <div className="flex justify-between items-center text-xs mb-2">
+              <span className={`font-bold ${s.efficiencyGap > 0 ? "text-red-400" : "text-emerald-400"}`}>
                 EG: {s.efficiencyGap.toFixed(3)}
               </span>
+              <div className="flex gap-2">
+                <span className="text-blue-400">{((s.demVotes / (s.demVotes + s.repVotes)) * 100).toFixed(1)}% D</span>
+                <span className="text-red-400">{((s.repVotes / (s.demVotes + s.repVotes)) * 100).toFixed(1)}% R</span>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center text-xs mb-2 text-slate-400">
+              <span>BA+: {s.education.toFixed(1)}%</span>
+              <span>Inc: ${Math.round(s.income).toLocaleString()}</span>
+            </div>
+
+            {/* Mini Demographic Bar */}
+            <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden flex">
+              <div style={{ width: `${(s.white / s.population) * 100}%` }} className="h-full bg-slate-400" title="White"></div>
+              <div style={{ width: `${(s.black / s.population) * 100}%` }} className="h-full bg-purple-500" title="Black"></div>
+              <div style={{ width: `${(s.hispanic / s.population) * 100}%` }} className="h-full bg-orange-500" title="Hispanic"></div>
             </div>
           </div>
         ))}
