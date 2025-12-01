@@ -292,8 +292,14 @@ export class MapEngine {
         // Draw Main
         if (this.viewMode === 'district') {
           // Color based on district
-          const districtColors = ['#1f2937', '#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#6366f1', '#14b8a6', '#f97316'];
-          const colorIndex = precinct.districtId % districtColors.length;
+          const districtColors = [
+            '#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', 
+            '#ec4899', '#6366f1', '#14b8a6', '#f97316', '#06b6d4',
+            '#84cc16', '#d946ef', '#f43f5e', '#eab308', '#2dd4bf'
+          ];
+          // Use a hash of the districtId to get a stable but pseudo-random color
+          // (id * large_prime) % colors.length
+          const colorIndex = (precinct.districtId * 137) % districtColors.length;
           ctx.fillStyle = districtColors[colorIndex] || '#1f2937';
         } else {
           // Political View
