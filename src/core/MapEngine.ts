@@ -161,30 +161,74 @@ export class MapEngine {
 
   public async loadInitialData() {
     console.log("Loading initial data...");
-    // Generate states
-    const states = DataGenerator.generateStates(10, 10); // 100 states for testing
     
-    states.forEach((state, index) => {
-      // Convert GeoJSON polygon to Float32Array
-      const coords = state.geometry.coordinates[0].flat() as number[];
-      const float32Coords = new Float32Array(coords);
+    try {
+      const { features, bounds } = await DataGenerator.loadUSData();
       
-      // Dummy stats
-      const stats = new Uint16Array([1000, 500, 500]);
+      // Calculate transform to fit bounds
+      const [minX, minY, maxX, maxY] = bounds;
+      const dataWidth = maxX - minX;
+      const dataHeight = maxY - minY;
       
-      this.dataStore.addPrecinct(index, float32Coords, stats, 0);
-    });
-    
-    // Send to worker
-    const precinctPayload = Array.from(this.dataStore.getAllPrecincts()).map(p => ({
-      id: p.id,
-      population: p.stats[0], // Assuming index 0 is population
-      districtId: p.districtId,
-      coords: Array.from(p.coords)
-    }));
-    workerManager.sendMessage('LOAD_DATA', { precincts: precinctPayload });
-    
-    this.render();
+      if (this.canvas) {
+        const scaleX = this.canvas.width / dataWidth;
+        const scaleY = this.canvas.height / dataHeight;
+        const scale = Math.min(scaleX, scaleY) * 0.9; // 90% fit
+        
+        const centerX = (minX + maxX) / 2;
+        const centerY = (minY + maxY) / 2;
+        
+        this.transform = {
+          k: scale,
+          x: this.canvas.width / 2 - centerX * scale,
+          y: this.canvas.height / 2 - centerY * scale
+        };
+      }
+
+      features.forEach((feature, index) => {
+        // Convert GeoJSON polygon to Float32Array
+        // We need to flatten the coordinates. 
+        // Note: DataStore currently supports simple Polygons. 
+        // For MultiPolygons, we might need to simplify or split them.
+        // For now, let's take the largest polygon if it's a MultiPolygon, or just the first.
+        // Or better, DataStore should handle MultiPolygons? 
+        // Current DataStore expects a single Float32Array of coords.
+        // Let's flatten all rings into one array separated by NaNs or just take the outer ring of the first polygon for simplicity in this demo.
+        // Actually, DataGenerator already projected them to [x,y].
+        
+        const geometry = feature.geometry;
+        let coords: number[] = [];
+        
+        if (geometry.type === 'Polygon') {
+          coords = (geometry.coordinates[0] as any[]).flat();
+        } else if (geometry.type === 'MultiPolygon') {
+          // Flatten all polygons? Or just take the first?
+          // Taking the first is safest for now to avoid rendering artifacts with simple line drawing
+          coords = (geometry.coordinates[0][0] as any[]).flat();
+        }
+
+        const float32Coords = new Float32Array(coords);
+        
+        // Stats from feature properties
+        const pop = feature.properties?.population || 1000;
+        const stats = new Uint16Array([pop, 0, 0]); // Pop, Dem, Rep (dummy)
+        
+        this.dataStore.addPrecinct(index, float32Coords, stats, 0);
+      });
+      
+      // Send to worker
+      const precinctPayload = Array.from(this.dataStore.getAllPrecincts()).map(p => ({
+        id: p.id,
+        population: p.stats[0],
+        districtId: p.districtId,
+        coords: Array.from(p.coords)
+      }));
+      workerManager.sendMessage('LOAD_DATA', { precincts: precinctPayload });
+      
+      this.render();
+    } catch (e) {
+      console.error("Failed to load US data:", e);
+    }
   }
 
   public render() {
