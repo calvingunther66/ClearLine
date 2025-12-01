@@ -27,7 +27,7 @@ function App() {
           </div>
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-white drop-shadow-md">
-              Redistrict<span className="text-blue-400">OS</span>
+              Clear<span className="text-blue-400">Line</span>
             </h1>
             <div className="flex items-center gap-2">
               <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase tracking-wider">
