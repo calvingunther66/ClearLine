@@ -135,6 +135,17 @@ export function simulatedAnnealing(
             case '<': meets = val < c.value; break;
             case '>=': meets = val >= c.value; break;
             case '<=': meets = val <= c.value; break;
+            case '~=': {
+              // Approx match within 5% tolerance
+              const tolerance = c.value * 0.05;
+              meets = val >= (c.value - tolerance) && val <= (c.value + tolerance);
+              break;
+            }
+            case 'between': {
+              const max = c.maxValue ?? c.value;
+              meets = val >= c.value && val <= max;
+              break;
+            }
           }
           
           if (meets) districtsMeeting++;

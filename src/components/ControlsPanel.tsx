@@ -7,6 +7,7 @@ interface ControlsPanelProps {
   viewMode: 'district' | 'political';
   onSetViewMode: (mode: 'district' | 'political') => void;
   onAutoRedistrict: (config: { runs: number; isAuto: boolean }) => Promise<void>;
+  isRedistricting: boolean;
 }
 
 export const ControlsPanel: React.FC<ControlsPanelProps> = ({ 
@@ -14,21 +15,17 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
   onGenerateBorders, 
   viewMode, 
   onSetViewMode,
-  onAutoRedistrict
+  onAutoRedistrict,
+  isRedistricting
 }) => {
-  const [isRedistricting, setIsRedistricting] = useState(false);
   const [runs, setRuns] = useState(1);
   const [isAuto, setIsAuto] = useState(false);
 
   const handleRedistrictClick = async () => {
-    setIsRedistricting(true);
     try {
       await onAutoRedistrict({ runs, isAuto });
-      onUpdate();
     } catch (e) {
       console.error(e);
-    } finally {
-      setIsRedistricting(false);
     }
   };
 
@@ -87,9 +84,8 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({
         </div>
 
         <button
-          onClick={handleRedistrictClick}
-          disabled={isRedistricting}
-          className="group relative w-full px-4 py-3 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 hover:border-purple-500/50 text-purple-100 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden"
+          onClick={() => !isRedistricting && handleRedistrictClick()}
+          className={`group relative w-full px-4 py-3 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 hover:border-purple-500/50 text-purple-100 rounded-lg transition-all overflow-hidden ${isRedistricting ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           <div className="absolute inset-0 bg-gradient-to-r from-purple-600/0 via-purple-600/10 to-purple-600/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
           <div className="flex items-center justify-between">

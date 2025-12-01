@@ -7,7 +7,7 @@ interface ConstraintsPanelProps {
 }
 
 export const ConstraintsPanel: React.FC<ConstraintsPanelProps> = ({ constraints, onConstraintsChange }) => {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(true);
 
   const addConstraint = () => {
     const newConstraint: Constraint = {
@@ -61,19 +61,31 @@ export const ConstraintsPanel: React.FC<ConstraintsPanelProps> = ({ constraints,
                   <select 
                     value={c.operator}
                     onChange={(e) => updateConstraint(c.id, { operator: e.target.value as Constraint['operator'] })}
-                    className="bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-slate-300 w-12"
+                    className="bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-slate-300 w-16"
                   >
                     <option value=">">&gt;</option>
                     <option value="<">&lt;</option>
                     <option value=">=">&ge;</option>
                     <option value="<=">&le;</option>
+                    <option value="~=">~=</option>
+                    <option value="between">Range</option>
                   </select>
                   <input 
                     type="number" 
                     value={c.value}
                     onChange={(e) => updateConstraint(c.id, { value: Number(e.target.value) })}
                     className="bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-slate-300 w-16"
+                    placeholder={c.operator === 'between' ? "Min" : "Value"}
                   />
+                  {c.operator === 'between' && (
+                    <input 
+                      type="number" 
+                      value={c.maxValue || c.value + 10}
+                      onChange={(e) => updateConstraint(c.id, { maxValue: Number(e.target.value) })}
+                      className="bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-slate-300 w-16"
+                      placeholder="Max"
+                    />
+                  )}
                 </div>
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-2">
@@ -92,6 +104,12 @@ export const ConstraintsPanel: React.FC<ConstraintsPanelProps> = ({ constraints,
                   >
                     ×
                   </button>
+                </div>
+                {/* Natural Language Sentence */}
+                <div className="text-[10px] text-slate-500 italic border-t border-slate-700/50 pt-1 mt-1">
+                  In <strong className="text-purple-400">{c.targetPercent}%</strong> of districts, 
+                  <strong className="text-blue-400"> {c.metric}</strong> should be 
+                  <strong className="text-emerald-400"> {c.operator === 'between' ? `between ${c.value} and ${c.maxValue || c.value}` : `${c.operator} ${c.value}`}</strong>
                 </div>
               </div>
             ))}

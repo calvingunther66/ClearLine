@@ -16,6 +16,7 @@ function App() {
   const [selectedPrecinct, setSelectedPrecinct] = useState<PrecinctData | null>(null);
   const [constraints, setConstraints] = useState<Constraint[]>([]);
   const [viewMode, setViewMode] = useState<'district' | 'political'>('district');
+  const [isRedistricting, setIsRedistricting] = useState(false);
 
   useEffect(() => {
     // Initial load
@@ -26,7 +27,17 @@ function App() {
 
   const handleAutoRedistrict = async (config: { runs: number; isAuto: boolean }) => {
     if (mapRef.current) {
-      mapRef.current.startAutoRedistrict(constraints, config);
+      setIsRedistricting(true);
+      try {
+        await mapRef.current.startAutoRedistrict(constraints, config);
+        handleUpdate();
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setTimeout(() => {
+          setIsRedistricting(false);
+        }, 0);
+      }
     }
   };
 
@@ -90,6 +101,7 @@ function App() {
         viewMode={viewMode}
         onSetViewMode={handleSetViewMode}
         onAutoRedistrict={handleAutoRedistrict}
+        isRedistricting={isRedistricting}
       />
     </div>
   );

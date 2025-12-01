@@ -123,6 +123,9 @@ export class MapEngine {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false });
     
+    this.hitCanvas = document.createElement('canvas');
+    this.hitCtx = this.hitCanvas.getContext('2d', { willReadFrequently: true });
+    
     // Add event listeners
     canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));
     canvas.addEventListener('mousedown', this.handleMouseDown.bind(this));

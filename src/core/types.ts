@@ -16,8 +16,9 @@ export interface WorkerResponse {
 export interface Constraint {
   id: string;
   metric: 'population' | 'demVotes' | 'repVotes' | 'white' | 'black' | 'hispanic' | 'education' | 'income';
-  operator: '>' | '<' | '>=' | '<=';
+  operator: '>' | '<' | '>=' | '<=' | '~=' | 'between';
   value: number;
+  maxValue?: number; // For 'between' operator
   targetPercent: number; // % of districts that must meet this rule
 }
 
