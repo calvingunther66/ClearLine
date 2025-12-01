@@ -24,9 +24,9 @@ function App() {
     }
   }, []);
 
-  const handleAutoRedistrict = () => {
+  const handleAutoRedistrict = async (runs: number = 1) => {
     if (mapRef.current) {
-      mapRef.current.startAutoRedistrict(constraints);
+      mapRef.current.startAutoRedistrict(constraints, runs);
     }
   };
 
@@ -81,15 +81,6 @@ function App() {
         </div>
       </div>
 
-      <div className="absolute top-24 left-6 z-10 flex gap-2">
-        <button 
-          onClick={handleAutoRedistrict}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded shadow-lg transition-colors"
-        >
-          Auto Redistrict
-        </button>
-      </div>
-
       <PerformanceMonitor />
       <StatsPanel selectedPrecinct={selectedPrecinct} />
       <ConstraintsPanel constraints={constraints} onConstraintsChange={setConstraints} />
@@ -99,6 +90,7 @@ function App() {
         onGenerateBorders={handleGenerateBorders}
         viewMode={viewMode}
         onSetViewMode={handleSetViewMode}
+        onAutoRedistrict={handleAutoRedistrict}
       />
     </div>
   );

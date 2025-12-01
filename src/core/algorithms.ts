@@ -53,7 +53,7 @@ export function seedAndGrow(
 export function simulatedAnnealing(
   precincts: { id: number; districtId: number; population: number; stats?: number[] }[],
   config: AlgorithmConfig
-): Map<number, number> {
+): { assignment: Map<number, number>, cost: number } {
   const { districtCount, constraints = [] } = config;
   
   const currentAssignment = new Map<number, number>();
@@ -187,5 +187,5 @@ export function simulatedAnnealing(
     temperature *= coolingRate;
   }
   
-  return currentAssignment;
+  return { assignment: currentAssignment, cost: currentCost };
 }

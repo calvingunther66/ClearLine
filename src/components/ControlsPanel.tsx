@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { workerManager } from '../core/WorkerManager';
 import { DataStore } from '../core/DataStore';
 
 interface ControlsPanelProps {
@@ -8,23 +7,24 @@ interface ControlsPanelProps {
   onGenerateBorders: () => void;
   viewMode: 'district' | 'political';
   onSetViewMode: (mode: 'district' | 'political') => void;
+  onAutoRedistrict: (runs: number) => Promise<void>;
 }
 
-export const ControlsPanel: React.FC<ControlsPanelProps> = ({ dataStore, onUpdate, onGenerateBorders, viewMode, onSetViewMode }) => {
+export const ControlsPanel: React.FC<ControlsPanelProps> = ({ 
+  onUpdate, 
+  onGenerateBorders, 
+  viewMode, 
+  onSetViewMode,
+  onAutoRedistrict
+}) => {
   const [isRedistricting, setIsRedistricting] = useState(false);
+  const [runs, setRuns] = useState(1);
 
-  const handleAutoRedistrict = async () => {
+  const handleRedistrictClick = async () => {
     setIsRedistricting(true);
     try {
-      const result = await workerManager.sendMessage('AUTO_REDISTRICT', { districtCount: 5 });
-      const updates = result as { id: number; districtId: number }[];
-      
-      // Batch update DataStore
-      updates.forEach(u => {
-        dataStore.updatePrecinctDistrict(u.id, u.districtId);
-      });
-      
-      onUpdate(); // Trigger re-render
+      await onAutoRedistrict(runs);
+      onUpdate();
     } catch (e) {
       console.error(e);
     } finally {
@@ -62,36 +62,28 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({ dataStore, onUpdat
       <h2 className="text-xs font-bold text-slate-400 mb-4 uppercase tracking-widest">Algorithms</h2>
       
       <div className="space-y-3">
-        <button
-          onClick={handleAutoRedistrict}
-          disabled={isRedistricting}
-          className="group relative w-full px-4 py-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 hover:border-blue-500/50 text-blue-100 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden"
-        >
-          <div className="absolute inset-0 bg-gradient-to-r from-blue-600/0 via-blue-600/10 to-blue-600/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wide">Auto Redistrict (US)</span>
-            {isRedistricting && <span className="w-2 h-2 bg-blue-400 rounded-full animate-ping"></span>}
-          </div>
-        </button>
+        <div className="flex items-center justify-between bg-slate-800/50 p-2 rounded border border-slate-700 mb-2">
+          <span className="text-xs text-slate-300">Ensemble Runs</span>
+          <input 
+            type="number" 
+            min="1" 
+            max="20" 
+            value={runs} 
+            onChange={(e) => setRuns(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
+            className="w-12 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-right text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+          />
+        </div>
 
         <button
-          onClick={async () => {
-            setIsRedistricting(true);
-            try {
-              const result = await workerManager.sendMessage('SIMULATED_ANNEALING', { districtCount: 5 });
-              const updates = result as { id: number; districtId: number }[];
-              updates.forEach(u => dataStore.updatePrecinctDistrict(u.id, u.districtId));
-              onUpdate();
-            } catch (e) {
-              console.error(e);
-            } finally {
-              setIsRedistricting(false);
-            }
-          }}
+          onClick={handleRedistrictClick}
           disabled={isRedistricting}
-          className="w-full px-4 py-3 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 hover:border-purple-500/50 text-purple-100 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between"
+          className="group relative w-full px-4 py-3 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 hover:border-purple-500/50 text-purple-100 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden"
         >
-          <span className="text-xs font-bold uppercase tracking-wide">Simulated Annealing</span>
+          <div className="absolute inset-0 bg-gradient-to-r from-purple-600/0 via-purple-600/10 to-purple-600/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wide">Auto Redistrict (SA)</span>
+            {isRedistricting && <span className="w-2 h-2 bg-purple-400 rounded-full animate-ping"></span>}
+          </div>
         </button>
 
         <div className="h-px bg-slate-700/50 my-2"></div>
