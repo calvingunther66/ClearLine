@@ -102,7 +102,8 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         break;
       }
       case 'SIMULATED_ANNEALING': {
-        const statePrecincts = new Map<number, { id: number, districtId: number, population: number, x: number, y: number }[]>();
+        const { constraints } = payload as { constraints: any[] };
+        const statePrecincts = new Map<number, { id: number, districtId: number, population: number, x: number, y: number, stats: number[] }[]>();
         
         precinctDistrictMap.forEach((districtId, precinctId) => {
           const stateId = precinctStateMap.get(precinctId);
@@ -114,8 +115,9 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
               id: precinctId,
               districtId,
               population: precinctStatsMap.get(precinctId)?.[0] || 0,
-              x: 0, // Not used for annealing yet
-              y: 0
+              x: 0, 
+              y: 0,
+              stats: precinctStatsMap.get(precinctId) || []
             });
           }
         });
@@ -127,7 +129,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
           if (!apportionment) return;
 
           const districtCount = apportionment.districts;
-          const newAssignment = simulatedAnnealing(precincts, { districtCount });
+          const newAssignment = simulatedAnnealing(precincts, { districtCount, constraints });
           
           newAssignment.forEach((localDistrictId, precinctId) => {
             const globalDistrictId = stateId * 100 + localDistrictId;

@@ -4,6 +4,7 @@ import { DataGenerator } from './DataGenerator';
 import { BrushManager } from './BrushManager';
 import { workerManager } from './WorkerManager';
 import type { Feature, Polygon, MultiPolygon } from 'geojson';
+import type { Constraint } from './types';
 
 export class MapEngine {
   private canvas: HTMLCanvasElement | null = null;
@@ -399,5 +400,34 @@ export class MapEngine {
 
     ctx.restore();
     hitCtx.restore();
+  }
+
+  public async startAutoRedistrict(constraints: Constraint[] = []) {
+    try {
+      const messageType = constraints.length > 0 ? 'SIMULATED_ANNEALING' : 'AUTO_REDISTRICT';
+      
+      const result = await workerManager.sendMessage(messageType, { constraints });
+      
+      const updates = result as { id: number, districtId: number }[];
+      updates.forEach(u => {
+        const precinct = this.dataStore.getPrecinct(u.id);
+        if (precinct) {
+          precinct.districtId = u.districtId;
+        }
+      });
+      
+      this.render();
+      this.runAnalysis();
+    } catch (e) {
+      console.error("Auto redistrict failed:", e);
+    }
+  }
+
+  public async runAnalysis() {
+    try {
+      await workerManager.sendMessage('RUN_ANALYSIS', {});
+    } catch (e) {
+      console.error("Analysis failed:", e);
+    }
   }
 }

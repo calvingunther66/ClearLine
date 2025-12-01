@@ -3,6 +3,8 @@ import { MapEngine } from '../core/MapEngine';
 import { DataStore } from '../core/DataStore';
 import type { PrecinctData } from '../core/DataStore';
 
+import type { Constraint } from '../core/types';
+
 interface MapCanvasProps {
   dataStore: DataStore;
   updateTrigger: number;
@@ -10,9 +12,11 @@ interface MapCanvasProps {
 }
 
 export interface MapCanvasHandle {
-  generateBorders: () => void;
   render: () => void;
+  generateBorders: () => void;
   setViewMode: (mode: 'district' | 'political') => void;
+  loadInitialData: () => Promise<void>;
+  startAutoRedistrict: (constraints?: Constraint[]) => void;
 }
 
 export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({ dataStore, updateTrigger, onPrecinctSelect }, ref) => {
@@ -20,15 +24,11 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({ dataStor
   const engineRef = useRef<MapEngine | null>(null);
 
   useImperativeHandle(ref, () => ({
-    generateBorders: () => {
-      engineRef.current?.generateBorders();
-    },
-    render: () => {
-      engineRef.current?.render();
-    },
-    setViewMode: (mode) => {
-      engineRef.current?.setViewMode(mode);
-    }
+    render: () => engineRef.current?.render(),
+    generateBorders: () => engineRef.current?.generateBorders(),
+    setViewMode: (mode) => engineRef.current?.setViewMode(mode),
+    loadInitialData: async () => engineRef.current?.loadInitialData(),
+    startAutoRedistrict: (constraints) => engineRef.current?.startAutoRedistrict(constraints)
   }));
 
   useEffect(() => {

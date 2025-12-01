@@ -1,5 +1,8 @@
+import type { Constraint } from './types';
+
 export interface AlgorithmConfig {
   districtCount: number;
+  constraints?: Constraint[];
 }
 
 export function seedAndGrow(
@@ -28,9 +31,6 @@ export function seedAndGrow(
   }
 
   // 2. Assign every precinct to nearest center (Voronoi-like)
-  // This is a simple 1-pass assignment. For better results, we could iterate (K-Means).
-  // Let's do 1-pass for speed first.
-  
   precincts.forEach(p => {
     let minDist = Infinity;
     let closestDistrict = 1;
@@ -51,35 +51,140 @@ export function seedAndGrow(
 }
 
 export function simulatedAnnealing(
-  precincts: { id: number; districtId: number; population: number }[],
+  precincts: { id: number; districtId: number; population: number; stats?: number[] }[],
   config: AlgorithmConfig
 ): Map<number, number> {
-  // Simplified Simulated Annealing
-  // 1. Start with current assignment
-  // 2. Iteratively swap/move precincts
-  // 3. Accept if better or with probability based on temperature
+  const { districtCount, constraints = [] } = config;
   
   const currentAssignment = new Map<number, number>();
+  // Initialize with current assignment
   precincts.forEach(p => currentAssignment.set(p.id, p.districtId));
   
-  const iterations = 1000;
-  const { districtCount } = config;
+  // Helper to calculate cost
+  const calculateCost = (assignment: Map<number, number>): number => {
+    let cost = 0;
+    
+    // 1. Population Balance Cost (Standard)
+    let totalPop = 0;
+    
+    // 2. Constraint Cost
+    // We need to aggregate stats for each district to check constraints
+    const districtStats = new Map<number, {
+      pop: number,
+      dem: number,
+      rep: number,
+      white: number,
+      black: number,
+      hispanic: number,
+      eduProd: number,
+      incProd: number
+    }>();
+
+    precincts.forEach(p => {
+      const dId = assignment.get(p.id)!;
+      if (!districtStats.has(dId)) {
+        districtStats.set(dId, { pop: 0, dem: 0, rep: 0, white: 0, black: 0, hispanic: 0, eduProd: 0, incProd: 0 });
+      }
+      const ds = districtStats.get(dId)!;
+      const stats = p.stats || [0,0,0,0,0,0,0,0];
+      
+      ds.pop += stats[0];
+      ds.dem += stats[1];
+      ds.rep += stats[2];
+      ds.white += stats[3];
+      ds.black += stats[4];
+      ds.hispanic += stats[5];
+      ds.eduProd += (stats[6] || 0) * stats[0];
+      ds.incProd += (stats[7] || 0) * stats[0];
+      
+      totalPop += stats[0];
+    });
+
+    const targetPop = totalPop / districtCount;
+    
+    // Population Deviation Cost
+    districtStats.forEach(ds => {
+      cost += Math.abs(ds.pop - targetPop) / targetPop;
+    });
+
+    // Constraint Cost
+    if (constraints.length > 0) {
+      constraints.forEach(c => {
+        let districtsMeeting = 0;
+        let totalDistricts = 0; // Only count districts that exist/have pop
+        
+        districtStats.forEach(ds => {
+          if (ds.pop === 0) return;
+          totalDistricts++;
+          
+          let val = 0;
+          switch (c.metric) {
+            case 'population': val = ds.pop; break;
+            case 'demVotes': val = ds.dem; break;
+            case 'repVotes': val = ds.rep; break;
+            case 'white': val = ds.white; break;
+            case 'black': val = ds.black; break;
+            case 'hispanic': val = ds.hispanic; break;
+            case 'education': val = ds.eduProd / ds.pop; break;
+            case 'income': val = ds.incProd / ds.pop; break;
+          }
+          
+          let meets = false;
+          switch (c.operator) {
+            case '>': meets = val > c.value; break;
+            case '<': meets = val < c.value; break;
+            case '>=': meets = val >= c.value; break;
+            case '<=': meets = val <= c.value; break;
+          }
+          
+          if (meets) districtsMeeting++;
+        });
+        
+        const percentMet = (districtsMeeting / Math.max(1, totalDistricts)) * 100;
+        const deviation = Math.abs(percentMet - c.targetPercent);
+        cost += deviation * 10; // Weight constraints heavily
+      });
+    }
+
+    return cost;
+  };
+
+  let currentCost = calculateCost(currentAssignment);
+  const iterations = 2000;
+  let temperature = 1.0;
+  const coolingRate = 0.995;
 
   for (let i = 0; i < iterations; i++) {
-    // Pick a random precinct
+    // Pick random precinct
     const randomIdx = Math.floor(Math.random() * precincts.length);
-    const precinct = precincts[randomIdx];
+    const p = precincts[randomIdx];
     
-    // Propose new district
+    const oldDistrict = currentAssignment.get(p.id)!;
+    
+    // Propose move to neighbor district? 
+    // For simplicity, just random district, but better to pick neighbor.
+    // Let's pick a random district for now (simpler than building adjacency graph here).
     const newDistrict = Math.floor(Math.random() * districtCount) + 1;
     
-    if (newDistrict !== precinct.districtId) {
-      // Calculate "Energy" (Cost) - e.g., population deviation
-      // For now, just random acceptance to simulate the process
-      if (Math.random() > 0.5) {
-        currentAssignment.set(precinct.id, newDistrict);
+    if (newDistrict !== oldDistrict) {
+      // Apply move
+      currentAssignment.set(p.id, newDistrict);
+      const newCost = calculateCost(currentAssignment);
+      
+      // Acceptance probability
+      if (newCost < currentCost) {
+        currentCost = newCost;
+      } else {
+        const prob = Math.exp(-(newCost - currentCost) / temperature);
+        if (Math.random() < prob) {
+          currentCost = newCost;
+        } else {
+          // Revert
+          currentAssignment.set(p.id, oldDistrict);
+        }
       }
     }
+    temperature *= coolingRate;
   }
   
   return currentAssignment;

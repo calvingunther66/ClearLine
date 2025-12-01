@@ -1,21 +1,34 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { MapCanvas } from './components/MapCanvas';
 import type { MapCanvasHandle } from './components/MapCanvas';
 import { StatsPanel } from './components/StatsPanel';
 import { ControlsPanel } from './components/ControlsPanel';
 import { PerformanceMonitor } from './components/PerformanceMonitor';
 import { DataStore } from './core/DataStore';
-
-// Singleton DataStore for the app
-const dataStore = new DataStore();
-
+import { ConstraintsPanel } from './components/ConstraintsPanel';
+import type { Constraint } from './core/types';
 import type { PrecinctData } from './core/DataStore';
 
 function App() {
-  const [updateTrigger, setUpdateTrigger] = useState(0);
-  const [viewMode, setViewMode] = useState<'district' | 'political'>('district');
-  const [selectedPrecinct, setSelectedPrecinct] = useState<PrecinctData | null>(null);
   const mapRef = useRef<MapCanvasHandle>(null);
+  const [dataStore] = useState(() => new DataStore());
+  const [updateTrigger, setUpdateTrigger] = useState(0);
+  const [selectedPrecinct, setSelectedPrecinct] = useState<PrecinctData | null>(null);
+  const [constraints, setConstraints] = useState<Constraint[]>([]);
+  const [viewMode, setViewMode] = useState<'district' | 'political'>('district');
+
+  useEffect(() => {
+    // Initial load
+    if (mapRef.current) {
+      mapRef.current.loadInitialData();
+    }
+  }, []);
+
+  const handleAutoRedistrict = () => {
+    if (mapRef.current) {
+      mapRef.current.startAutoRedistrict(constraints);
+    }
+  };
 
   const handleUpdate = () => {
     setUpdateTrigger(prev => prev + 1);
@@ -38,7 +51,7 @@ function App() {
   };
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-slate-950 text-slate-50 font-sans selection:bg-blue-500/30">
+    <div className="relative w-full h-screen bg-slate-900 overflow-hidden">
       <MapCanvas 
         ref={mapRef} 
         dataStore={dataStore} 
@@ -68,8 +81,18 @@ function App() {
         </div>
       </div>
 
+      <div className="absolute top-24 left-6 z-10 flex gap-2">
+        <button 
+          onClick={handleAutoRedistrict}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded shadow-lg transition-colors"
+        >
+          Auto Redistrict
+        </button>
+      </div>
+
       <PerformanceMonitor />
       <StatsPanel selectedPrecinct={selectedPrecinct} />
+      <ConstraintsPanel constraints={constraints} onConstraintsChange={setConstraints} />
       <ControlsPanel 
         dataStore={dataStore} 
         onUpdate={handleUpdate} 
