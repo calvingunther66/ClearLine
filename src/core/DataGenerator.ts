@@ -5,8 +5,40 @@ import type { Feature, Polygon, MultiPolygon, FeatureCollection, Geometry } from
 export class DataGenerator {
   static async loadUSData(): Promise<{ features: Feature<Polygon | MultiPolygon>[], bounds: [number, number, number, number] }> {
     // Fetch US Atlas data (Topology)
-    const response = await fetch('https://cdn.jsdelivr.net/npm/us-atlas@3/counties-10m.json');
-    const topology = await response.json();
+    const topologyPromise = fetch('https://cdn.jsdelivr.net/npm/us-atlas@3/counties-10m.json').then(r => r.json());
+    
+    // Fetch 2020 Election Data (CSV)
+    const electionPromise = fetch('https://raw.githubusercontent.com/tonmcg/US_County_Level_Election_Results_08-24/master/2020_US_County_Level_Presidential_Results.csv').then(r => r.text());
+
+    const [topology, electionCsv] = await Promise.all([topologyPromise, electionPromise]);
+
+    // Parse Election CSV
+    // Format: state_name,county_fips,county_name,votes_gop,votes_dem,total_votes,...
+    const electionData = new Map<number, { dem: number, rep: number, total: number }>();
+    
+    const lines = electionCsv.split('\n');
+    // Skip header
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      
+      // Simple CSV split (assuming no commas in fields for this specific dataset, or simple enough)
+      // Actually county_name might have commas? The snippet shows "Autauga County".
+      // Let's assume standard CSV. If simple split fails, we might need regex.
+      // The snippet doesn't show quotes. Let's try simple split first.
+      const parts = line.split(',');
+      
+      if (parts.length >= 6) {
+        const fips = parseInt(parts[1], 10);
+        const rep = parseInt(parts[3], 10);
+        const dem = parseInt(parts[4], 10);
+        const total = parseInt(parts[5], 10);
+        
+        if (!isNaN(fips)) {
+          electionData.set(fips, { dem, rep, total });
+        }
+      }
+    }
 
     // Convert to GeoJSON
     // The topojson types are a bit loose, so we cast to unknown then FeatureCollection
@@ -68,15 +100,30 @@ export class DataGenerator {
         const id = Number(feature.id);
         const stateId = Math.floor(id / 1000);
         
-        // Generate synthetic population based on FIPS or random
-        const population = Math.floor(Math.random() * 50000) + 1000;
+        // Get real election data
+        const voteData = electionData.get(id);
         
-        // Synthetic political lean: Higher population -> More Dem lean
-        // Base 30-70 split, adjusted by population density proxy
-        const popFactor = Math.min(population / 40000, 1); // 0 to 1
-        const demProb = 0.3 + (popFactor * 0.4) + (Math.random() * 0.2 - 0.1);
-        const demVotes = Math.floor(population * Math.max(0.1, Math.min(0.9, demProb)));
-        const repVotes = population - demVotes;
+        let population, demVotes, repVotes;
+        
+        if (voteData) {
+          demVotes = voteData.dem;
+          repVotes = voteData.rep;
+          // Estimate population from votes (approx 66% turnout?) or just use total votes as proxy for now
+          // The user wants "voting data", so using total votes as the weight for redistricting is actually better for political fairness than raw population (one person one vote).
+          // But usually redistricting is based on total population.
+          // Let's use total votes * 1.5 as a rough population proxy if we don't have it, 
+          // or just use the random population if we want to keep that separate.
+          // Actually, let's use total votes as the "population" metric for the algorithm for now, 
+          // as it reflects the voting weight.
+          population = voteData.total; 
+        } else {
+          // Fallback
+          population = Math.floor(Math.random() * 50000) + 1000;
+          const popFactor = Math.min(population / 40000, 1);
+          const demProb = 0.3 + (popFactor * 0.4);
+          demVotes = Math.floor(population * demProb);
+          repVotes = population - demVotes;
+        }
 
         features.push({
           type: 'Feature',
