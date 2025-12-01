@@ -46,7 +46,7 @@ export const ConstraintsPanel: React.FC<ConstraintsPanelProps> = ({ constraints,
                 <div className="flex gap-2 items-center">
                   <select 
                     value={c.metric}
-                    onChange={(e) => updateConstraint(c.id, { metric: e.target.value as any })}
+                    onChange={(e) => updateConstraint(c.id, { metric: e.target.value as Constraint['metric'] })}
                     className="bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-slate-300 flex-1"
                   >
                     <option value="population">Population</option>
@@ -60,7 +60,7 @@ export const ConstraintsPanel: React.FC<ConstraintsPanelProps> = ({ constraints,
                   </select>
                   <select 
                     value={c.operator}
-                    onChange={(e) => updateConstraint(c.id, { operator: e.target.value as any })}
+                    onChange={(e) => updateConstraint(c.id, { operator: e.target.value as Constraint['operator'] })}
                     className="bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-slate-300 w-12"
                   >
                     <option value=">">&gt;</option>

@@ -1,4 +1,4 @@
-import type { WorkerMessage, WorkerResponse } from '../core/types';
+import type { WorkerMessage, WorkerResponse, Constraint } from '../core/types';
 import { runAnalysis } from '../core/analysis';
 import { seedAndGrow, simulatedAnnealing } from '../core/algorithms';
 import * as turf from '@turf/turf';
@@ -102,7 +102,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         break;
       }
       case 'SIMULATED_ANNEALING': {
-        const { constraints } = payload as { constraints: any[] };
+        const { constraints } = payload as { constraints: Constraint[] };
         const statePrecincts = new Map<number, { id: number, districtId: number, population: number, x: number, y: number, stats: number[] }[]>();
         
         precinctDistrictMap.forEach((districtId, precinctId) => {
