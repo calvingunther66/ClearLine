@@ -11,7 +11,28 @@ const dataStore = new DataStore();
 
 function App() {
   const [updateTrigger, setUpdateTrigger] = useState(0);
+  const [viewMode, setViewMode] = useState<'district' | 'political'>('district');
   const mapRef = useRef<MapCanvasHandle>(null);
+
+  const handleUpdate = () => {
+    setUpdateTrigger(prev => prev + 1);
+    if (mapRef.current) {
+      mapRef.current.render();
+    }
+  };
+
+  const handleGenerateBorders = () => {
+    if (mapRef.current) {
+      mapRef.current.generateBorders();
+    }
+  };
+
+  const handleSetViewMode = (mode: 'district' | 'political') => {
+    setViewMode(mode);
+    if (mapRef.current) {
+      mapRef.current.setViewMode(mode);
+    }
+  };
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-slate-950 text-slate-50 font-sans selection:bg-blue-500/30">
@@ -43,8 +64,10 @@ function App() {
       <StatsPanel />
       <ControlsPanel 
         dataStore={dataStore} 
-        onUpdate={() => setUpdateTrigger(prev => prev + 1)} 
-        onGenerateBorders={() => mapRef.current?.generateBorders()}
+        onUpdate={handleUpdate} 
+        onGenerateBorders={handleGenerateBorders}
+        viewMode={viewMode}
+        onSetViewMode={handleSetViewMode}
       />
     </div>
   );

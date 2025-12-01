@@ -6,9 +6,11 @@ interface ControlsPanelProps {
   dataStore: DataStore;
   onUpdate: () => void;
   onGenerateBorders: () => void;
+  viewMode: 'district' | 'political';
+  onSetViewMode: (mode: 'district' | 'political') => void;
 }
 
-export const ControlsPanel: React.FC<ControlsPanelProps> = ({ dataStore, onUpdate, onGenerateBorders }) => {
+export const ControlsPanel: React.FC<ControlsPanelProps> = ({ dataStore, onUpdate, onGenerateBorders, viewMode, onSetViewMode }) => {
   const [isRedistricting, setIsRedistricting] = useState(false);
 
   const handleAutoRedistrict = async () => {
@@ -32,7 +34,32 @@ export const ControlsPanel: React.FC<ControlsPanelProps> = ({ dataStore, onUpdat
 
   return (
     <div className="absolute bottom-6 left-6 bg-slate-900/80 backdrop-blur-xl rounded-xl border border-slate-700/50 shadow-2xl p-5 w-72 transition-all duration-300 hover:bg-slate-900/90">
-      <h2 className="text-xs font-bold text-slate-400 mb-4 uppercase tracking-widest">Algorithms & Tools</h2>
+      <h2 className="text-xs font-bold text-slate-400 mb-4 uppercase tracking-widest">Map Controls</h2>
+      
+      <div className="flex bg-slate-800/50 p-1 rounded-lg mb-4">
+        <button
+          onClick={() => onSetViewMode('district')}
+          className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${
+            viewMode === 'district' 
+              ? 'bg-slate-600 text-white shadow-sm' 
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          Districts
+        </button>
+        <button
+          onClick={() => onSetViewMode('political')}
+          className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${
+            viewMode === 'political' 
+              ? 'bg-blue-600/80 text-white shadow-sm' 
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          Political
+        </button>
+      </div>
+
+      <h2 className="text-xs font-bold text-slate-400 mb-4 uppercase tracking-widest">Algorithms</h2>
       
       <div className="space-y-3">
         <button

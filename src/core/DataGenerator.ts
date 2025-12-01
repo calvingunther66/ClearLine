@@ -68,14 +68,25 @@ export class DataGenerator {
         const id = Number(feature.id);
         const stateId = Math.floor(id / 1000);
         
+        // Generate synthetic population based on FIPS or random
+        const population = Math.floor(Math.random() * 50000) + 1000;
+        
+        // Synthetic political lean: Higher population -> More Dem lean
+        // Base 30-70 split, adjusted by population density proxy
+        const popFactor = Math.min(population / 40000, 1); // 0 to 1
+        const demProb = 0.3 + (popFactor * 0.4) + (Math.random() * 0.2 - 0.1);
+        const demVotes = Math.floor(population * Math.max(0.1, Math.min(0.9, demProb)));
+        const repVotes = population - demVotes;
+
         features.push({
           type: 'Feature',
           id: id,
           properties: {
             ...feature.properties,
             stateId: stateId,
-            // Generate synthetic population based on FIPS or random
-            population: Math.floor(Math.random() * 50000) + 1000
+            population,
+            demVotes,
+            repVotes
           },
           geometry: {
             type: geometry.type as 'Polygon' | 'MultiPolygon',

@@ -9,6 +9,8 @@ interface MapCanvasProps {
 
 export interface MapCanvasHandle {
   generateBorders: () => void;
+  render: () => void;
+  setViewMode: (mode: 'district' | 'political') => void;
 }
 
 export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({ dataStore, updateTrigger }, ref) => {
@@ -18,6 +20,12 @@ export const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({ dataStor
   useImperativeHandle(ref, () => ({
     generateBorders: () => {
       engineRef.current?.generateBorders();
+    },
+    render: () => {
+      engineRef.current?.render();
+    },
+    setViewMode: (mode) => {
+      engineRef.current?.setViewMode(mode);
     }
   }));
 

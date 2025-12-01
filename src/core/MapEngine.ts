@@ -17,6 +17,7 @@ export class MapEngine {
   private hoveredPrecinctId: number | null = null;
   private districtBorders: Map<number, Feature<Polygon | MultiPolygon>> = new Map();
   private isRunning = false;
+  private viewMode: 'district' | 'political' = 'district';
 
   constructor(dataStore: DataStore) {
     this.dataStore = dataStore;
@@ -35,6 +36,11 @@ export class MapEngine {
 
   public setDistrictBorders(borders: Map<number, Feature<Polygon | MultiPolygon>>) {
     this.districtBorders = borders;
+    this.render();
+  }
+
+  public setViewMode(mode: 'district' | 'political') {
+    this.viewMode = mode;
     this.render();
   }
 
@@ -213,7 +219,9 @@ export class MapEngine {
         
         // Stats from feature properties
         const pop = feature.properties?.population || 1000;
-        const stats = new Uint16Array([pop, 0, 0]); // Pop, Dem, Rep (dummy)
+        const dem = feature.properties?.demVotes || 0;
+        const rep = feature.properties?.repVotes || 0;
+        const stats = new Uint16Array([pop, dem, rep]); 
         
         const stateId = feature.properties?.stateId || 0;
         this.dataStore.addPrecinct(index, float32Coords, stats, 0, stateId);
@@ -282,12 +290,43 @@ export class MapEngine {
         hitCtx.closePath();
         
         // Draw Main
-        // Color based on district
-        const districtColors = ['#1f2937', '#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#6366f1', '#14b8a6', '#f97316'];
-        // Use modulo to cycle colors, but ensure unique-ish colors for adjacent districts (simple modulo is usually enough for this demo)
-        // We use districtId % colors.length
-        const colorIndex = precinct.districtId % districtColors.length;
-        ctx.fillStyle = districtColors[colorIndex] || '#1f2937';
+        if (this.viewMode === 'district') {
+          // Color based on district
+          const districtColors = ['#1f2937', '#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#6366f1', '#14b8a6', '#f97316'];
+          const colorIndex = precinct.districtId % districtColors.length;
+          ctx.fillStyle = districtColors[colorIndex] || '#1f2937';
+        } else {
+          // Political View
+          // For now, color by precinct lean since we don't have live district stats in main thread yet
+          // Or better, color by district winner if we can.
+          // Let's stick to precinct lean for "Political View" as it shows the underlying data map.
+          // Actually, user asked "what do the different colored districts represent", implying they want to see district colors.
+          // But "Political View" usually means Red/Blue map.
+          // Let's do precinct-level Red/Blue for now as it's easiest and looks cool.
+          
+          const dem = precinct.stats[1];
+          const rep = precinct.stats[2];
+          const total = dem + rep;
+          
+          if (total > 0) {
+            const demShare = dem / total;
+            // Scale opacity by margin? Or just solid color?
+            // Let's do solid color with intensity based on margin
+            // 50% = white/gray, 100% = blue, 0% = red
+            
+            if (demShare > 0.5) {
+              // Blue
+              const intensity = (demShare - 0.5) * 2; // 0 to 1
+              ctx.fillStyle = `rgba(59, 130, 246, ${0.3 + intensity * 0.7})`; // blue-500
+            } else {
+              // Red
+              const intensity = (0.5 - demShare) * 2; // 0 to 1
+              ctx.fillStyle = `rgba(239, 68, 68, ${0.3 + intensity * 0.7})`; // red-500
+            }
+          } else {
+            ctx.fillStyle = '#1f2937';
+          }
+        }
         
         ctx.fill();
         ctx.stroke();
