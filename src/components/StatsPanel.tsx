@@ -24,7 +24,7 @@ export const StatsPanel: React.FC<StatsPanelProps> = ({ selectedPrecinct }) => {
   }, []);
 
   return (
-    <div className="absolute top-20 right-6 w-72 bg-slate-900/80 backdrop-blur-xl rounded-xl border border-slate-700/50 shadow-2xl p-5 transition-all duration-300 hover:bg-slate-900/90 max-h-[80vh] overflow-y-auto">
+    <div className="absolute top-32 right-6 w-72 bg-slate-900/80 backdrop-blur-xl rounded-xl border border-slate-700/50 shadow-2xl p-5 transition-all duration-300 hover:bg-slate-900/90 max-h-[80vh] overflow-y-auto">
       {selectedPrecinct && (
         <div className="mb-6 pb-6 border-b border-slate-700/50">
           <h2 className="text-xs font-bold text-slate-400 mb-4 uppercase tracking-widest flex items-center gap-2">

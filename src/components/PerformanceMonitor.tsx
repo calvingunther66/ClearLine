@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { workerManager } from '../core/WorkerManager';
 
 export const PerformanceMonitor: React.FC = () => {
   const [fps, setFps] = useState(0);
@@ -20,13 +21,18 @@ export const PerformanceMonitor: React.FC = () => {
 
         // Check memory if available (Chrome only)
         const perf = performance as unknown as { memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number } };
+        let memoryUsed = 0;
         if (perf.memory) {
           const mem = perf.memory;
+          memoryUsed = Math.round(mem.usedJSHeapSize / 1024 / 1024);
           setMemory({
-            used: Math.round(mem.usedJSHeapSize / 1024 / 1024),
+            used: memoryUsed,
             limit: Math.round(mem.jsHeapSizeLimit / 1024 / 1024),
           });
         }
+        
+        // Update worker load
+        workerManager.updateLoad(fps, memoryUsed);
       }
 
       animationFrameId = requestAnimationFrame(loop);
@@ -38,7 +44,7 @@ export const PerformanceMonitor: React.FC = () => {
   }, []);
 
   return (
-    <div className="absolute top-6 right-6 bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 p-3 rounded-xl shadow-2xl text-[10px] font-mono text-emerald-400 pointer-events-none select-none z-50 min-w-[140px]">
+    <div className="absolute top-24 left-6 bg-slate-900/80 backdrop-blur-xl border border-slate-700/50 p-3 rounded-xl shadow-2xl text-[10px] font-mono text-emerald-400 pointer-events-none select-none z-50 min-w-[140px]">
       <div className="flex justify-between gap-4 mb-1.5 items-center">
         <span className="text-slate-500 font-bold uppercase tracking-wider">FPS</span>
         <span className={`font-bold text-sm ${fps < 30 ? 'text-red-400' : 'text-emerald-400'}`}>{fps}</span>
