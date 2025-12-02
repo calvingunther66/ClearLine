@@ -3,6 +3,30 @@ import { geoAlbersUsa } from 'd3-geo';
 import * as turf from '@turf/turf';
 import type { Feature, Polygon, MultiPolygon, FeatureCollection, Geometry } from 'geojson';
 
+interface ProcessedCountyData {
+  fips: string;
+  state: string;
+  county: string;
+  votes_gop: number;
+  votes_dem: number;
+  total_votes: number;
+  diff: number;
+  per_gop: number;
+  per_dem: number;
+  per_point_diff: number;
+  population: number;
+  white_pop: number;
+  black_pop: number;
+  hispanic_pop: number;
+  bachelors_degree_count: number;
+  bachelors_degree_pct: number;
+  median_income: number;
+  unemployment_rate: number;
+  white_pct: number;
+  black_pct: number;
+  hispanic_pct: number;
+}
+
 export class DataGenerator {
   // Helper to subdivide a feature into smaller polygons
   static subdivideFeature(feature: Feature<Polygon | MultiPolygon>, count: number): Feature<Polygon | MultiPolygon>[] {
@@ -54,84 +78,22 @@ export class DataGenerator {
         return r.json();
       });
       
-      // Fetch 2020 Election Data (CSV)
-      const electionPromise = fetch('/data/election_2020.csv').then(r => r.ok ? r.text() : '');
+      // Fetch Processed Data (JSON)
+      const dataPromise = fetch('/data/processed_data.json').then(r => {
+        if (!r.ok) throw new Error('Failed to load processed data');
+        return r.json();
+      });
 
-      // Fetch Demographics Data (CSV)
-      const demoPromise = fetch('/data/demographics.csv').then(r => r.ok ? r.text() : '');
+      const [topology, processedData] = await Promise.all([topologyPromise, dataPromise]);
 
-      // Fetch Education/Income Data (CSV)
-      const eduIncPromise = fetch('/data/education_income.csv').then(r => r.ok ? r.text() : '');
-
-      const [topology, electionCsv, demoCsv, eduIncCsv] = await Promise.all([topologyPromise, electionPromise, demoPromise, eduIncPromise]);
-
-      // Parse Election CSV
-      const electionData = new Map<number, { dem: number, rep: number }>();
-      if (electionCsv) {
-        const electionLines = electionCsv.split('\n');
-        for (let i = 1; i < electionLines.length; i++) {
-          const line = electionLines[i].trim();
-          if (!line) continue;
-          const parts = line.split(',');
-          if (parts.length >= 10) {
-            const fips = parseInt(parts[1], 10); // county_fips
-            const dem = parseInt(parts[4], 10); // votes_dem
-            const rep = parseInt(parts[5], 10); // votes_gop
-            if (!isNaN(fips)) {
-              electionData.set(fips, { dem, rep });
-            }
-          }
+      // Create a map for fast lookup
+      const dataMap = new Map<number, ProcessedCountyData>();
+      (processedData as ProcessedCountyData[]).forEach((d) => {
+        const fips = parseInt(d.fips, 10);
+        if (!isNaN(fips)) {
+          dataMap.set(fips, d);
         }
-      }
-
-      // Parse Demographics CSV
-      const demoData = new Map<number, { pop: number, white: number, black: number, hispanic: number }>();
-      if (demoCsv) {
-        const demoLines = demoCsv.split('\n');
-        for (let i = 1; i < demoLines.length; i++) {
-          const line = demoLines[i].trim();
-          if (!line) continue;
-          const parts = line.split(',');
-          if (parts.length >= 15) {
-            const fips = parseInt(parts[0], 10);
-            const pop = parseInt(parts[3], 10);
-            const white = parseInt(parts[10], 10); // NHWhite_Alone
-            const black = parseInt(parts[14], 10); // Black
-            const hispanic = parseInt(parts[16], 10); // Hispanic
-            
-            if (!isNaN(fips)) {
-              demoData.set(fips, { pop, white, black, hispanic });
-            }
-          }
-        }
-      }
-
-      // Parse Education/Income CSV
-      const eduIncData = new Map<number, { education: number, income: number }>();
-      if (eduIncCsv) {
-        const eduIncLines = eduIncCsv.split('\n');
-        const headers = eduIncLines[0].split(',');
-        const eduIdx = headers.findIndex((h: string) => h.includes("Percent of adults with a bachelor's degree or higher"));
-        const incIdx = headers.findIndex((h: string) => h.includes("Median_Household_Income_2018"));
-
-        if (eduIdx !== -1 && incIdx !== -1) {
-          for (let i = 1; i < eduIncLines.length; i++) {
-            const line = eduIncLines[i].trim();
-            if (!line) continue;
-            const parts = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || line.split(',');
-            const cleanParts = parts.map((p: string) => p.replace(/^"|"$/g, '').trim());
-            
-            const fips = parseInt(cleanParts[0], 10);
-            if (!isNaN(fips)) {
-               const edu = parseFloat(cleanParts[eduIdx]);
-               const inc = parseInt(cleanParts[incIdx], 10);
-               if (!isNaN(edu) && !isNaN(inc)) {
-                 eduIncData.set(fips, { education: Math.round(edu), income: inc });
-               }
-            }
-          }
-        }
-      }
+      });
 
       // Convert to GeoJSON
       const geojson = topojson.feature(topology, topology.objects.counties) as unknown as FeatureCollection<Geometry>;
@@ -189,39 +151,26 @@ export class DataGenerator {
           const stateId = Math.floor(id / 1000);
           
           // Get real data for the COUNTY
-          const vote = electionData.get(id);
-          const demo = demoData.get(id);
-          const eduInc = eduIncData.get(id);
+          const data = dataMap.get(id);
           
           let population = 0, demVotes = 0, repVotes = 0;
           let white = 0, black = 0, hispanic = 0;
           let education = 0, income = 0;
 
-          if (demo) {
-            population = demo.pop;
-            white = demo.white;
-            black = demo.black;
-            hispanic = demo.hispanic;
+          if (data) {
+            population = data.population || 0;
+            demVotes = data.votes_dem || 0;
+            repVotes = data.votes_gop || 0;
+            white = data.white_pop || 0;
+            black = data.black_pop || 0;
+            hispanic = data.hispanic_pop || 0;
+            education = data.bachelors_degree_pct || 0;
+            income = data.median_income || 0;
           } else {
-            population = Math.floor(Math.random() * 50000) + 1000;
-          }
-
-          if (vote) {
-            demVotes = vote.dem;
-            repVotes = vote.rep;
-          } else {
-            const popFactor = Math.min(population / 40000, 1);
-            const demProb = 0.3 + (popFactor * 0.4);
-            demVotes = Math.floor(population * 0.6 * demProb); 
-            repVotes = Math.floor(population * 0.6) - demVotes;
-          }
-          
-          if (eduInc) {
-            education = eduInc.education;
-            income = eduInc.income;
-          } else {
-            education = 20 + Math.floor(Math.random() * 20);
-            income = 40000 + Math.floor(Math.random() * 40000);
+            // Fallback for missing data (should be rare with real data)
+            population = 1000;
+            demVotes = 500;
+            repVotes = 500;
           }
 
           const projectedFeature: Feature<Polygon | MultiPolygon> = {
@@ -239,6 +188,7 @@ export class DataGenerator {
           
           subFeatures.forEach((subFeature, idx) => {
             const ratio = 1 / subFeatures.length;
+            // Add some noise to make it look less uniform
             const noise = () => 0.9 + Math.random() * 0.2; 
 
             const subPop = Math.round(population * ratio * noise());
@@ -319,8 +269,8 @@ export class DataGenerator {
               countyId: id,
               stateId: 1,
               population: 5000 + Math.random() * 5000,
-              demVotes: 2500 + Math.random() * 1000,
-              repVotes: 2500 + Math.random() * 1000,
+              demVotes: 2500 + Math.random() * 2000 - 1000, // 1500-3500
+              repVotes: 2500 + Math.random() * 2000 - 1000, // 1500-3500
               white: 3000,
               black: 1000,
               hispanic: 1000,

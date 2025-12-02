@@ -305,6 +305,13 @@ export class MapEngine {
       }
       console.log("All data sent to worker.");
       
+      console.log("All data sent to worker.");
+      
+      // Auto-redistrict on load to ensure we have correct number of districts (435)
+      // and they are contiguous (seedAndGrow).
+      console.log("Triggering initial auto-redistrict...");
+      await this.startAutoRedistrict([], { runs: 1, isAuto: false });
+      
       this.render();
     } catch (e) {
       console.error("Failed to load US data:", e);
