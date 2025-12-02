@@ -40,5 +40,8 @@ export interface PrecinctData {
   coords: Float32Array;
   stats: Uint16Array;
   districtId: number;
+  countyId?: number;
+  projectedDemVotes?: number;
+  projectedRepVotes?: number;
   history?: PrecinctStats[];
 }

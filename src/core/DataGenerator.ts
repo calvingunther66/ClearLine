@@ -1,8 +1,48 @@
 import * as topojson from 'topojson-client';
 import { geoAlbersUsa } from 'd3-geo';
+import * as turf from '@turf/turf';
 import type { Feature, Polygon, MultiPolygon, FeatureCollection, Geometry } from 'geojson';
 
 export class DataGenerator {
+  // Helper to subdivide a feature into smaller polygons
+  static subdivideFeature(feature: Feature<Polygon | MultiPolygon>, count: number): Feature<Polygon | MultiPolygon>[] {
+    try {
+      // 1. Generate random points inside the feature
+      const points = turf.randomPoint(count, { bbox: turf.bbox(feature) });
+      const validPoints = points.features.filter(pt => turf.booleanPointInPolygon(pt, feature));
+      
+      // Ensure we have at least some points, if not, add centroid
+      if (validPoints.length === 0) {
+        validPoints.push(turf.point(turf.centroid(feature).geometry.coordinates));
+      }
+      
+      // If we still have fewer than 2 points, we can't make a voronoi diagram that splits it meaningfuly 
+      // (actually voronoi needs points). If count is 1, just return original.
+      if (count <= 1 || validPoints.length < 2) {
+        return [feature];
+      }
+
+      // 2. Generate Voronoi
+      // turf.voronoi takes a FeatureCollection of points
+      const voronoi = turf.voronoi(turf.featureCollection(validPoints), { bbox: turf.bbox(feature) });
+      
+      // 3. Intersect Voronoi cells with original polygon
+      const precincts: Feature<Polygon | MultiPolygon>[] = [];
+      
+      voronoi.features.forEach((cell) => {
+        if (!cell) return;
+        const intersection = turf.intersect(turf.featureCollection([feature, cell]));
+        if (intersection) {
+          precincts.push(intersection as Feature<Polygon | MultiPolygon>);
+        }
+      });
+
+      return precincts.length > 0 ? precincts : [feature];
+    } catch {
+      // Fallback if subdivision fails
+      return [feature];
+    }
+  }
   static async loadUSData(): Promise<{ features: Feature<Polygon | MultiPolygon>[], bounds: [number, number, number, number] }> {
     // Fetch US Atlas data (Topology)
     const topologyPromise = fetch('https://cdn.jsdelivr.net/npm/us-atlas@3/counties-10m.json').then(r => r.json());
@@ -146,7 +186,7 @@ export class DataGenerator {
         const id = Number(feature.id);
         const stateId = Math.floor(id / 1000);
         
-        // Get real data
+        // Get real data for the COUNTY
         const vote = electionData.get(id);
         const demo = demoData.get(id);
         const eduInc = eduIncData.get(id);
@@ -161,7 +201,6 @@ export class DataGenerator {
           black = demo.black;
           hispanic = demo.hispanic;
         } else {
-          // Fallback population
           population = Math.floor(Math.random() * 50000) + 1000;
         }
 
@@ -169,10 +208,9 @@ export class DataGenerator {
           demVotes = vote.dem;
           repVotes = vote.rep;
         } else {
-          // Fallback votes based on population density proxy
           const popFactor = Math.min(population / 40000, 1);
           const demProb = 0.3 + (popFactor * 0.4);
-          demVotes = Math.floor(population * 0.6 * demProb); // Assume 60% turnout
+          demVotes = Math.floor(population * 0.6 * demProb); 
           repVotes = Math.floor(population * 0.6) - demVotes;
         }
         
@@ -184,25 +222,62 @@ export class DataGenerator {
           income = 40000 + Math.floor(Math.random() * 40000);
         }
 
-        features.push({
+        // Reconstruct the feature with projected coordinates for subdivision
+        // Note: turf works with GeoJSON coordinates (lon/lat usually), but our projection is already applied.
+        // Turf handles Cartesian coordinates fine for simple operations like intersect/voronoi if we treat them as planar.
+        // However, we projected them to [0..1000, 0..600].
+        
+        const projectedFeature: Feature<Polygon | MultiPolygon> = {
           type: 'Feature',
-          id: id,
-          properties: {
-            ...feature.properties,
-            stateId: stateId,
-            population,
-            demVotes,
-            repVotes,
-            white,
-            black,
-            hispanic,
-            education,
-            income
-          },
+          properties: {},
           geometry: {
             type: geometry.type as 'Polygon' | 'MultiPolygon',
             coordinates: newCoordinates
           } as Polygon | MultiPolygon
+        };
+
+        // Determine subdivision count based on population
+        // e.g. 1 precinct per 10k people, min 2, max 10
+        const subCount = Math.max(2, Math.min(10, Math.floor(population / 10000)));
+        
+        const subFeatures = DataGenerator.subdivideFeature(projectedFeature, subCount);
+        
+        subFeatures.forEach((subFeature, idx) => {
+          // Distribute data roughly by area (or just equal split for simplicity + random noise)
+          // A better way is area-weighted, but let's do simple split + noise for "organic" feel
+          
+          const ratio = 1 / subFeatures.length;
+          const noise = () => 0.9 + Math.random() * 0.2; // +/- 10%
+
+          const subPop = Math.round(population * ratio * noise());
+          const subDem = Math.round(demVotes * ratio * noise());
+          const subRep = Math.round(repVotes * ratio * noise());
+          const subWhite = Math.round(white * ratio * noise());
+          const subBlack = Math.round(black * ratio * noise());
+          const subHispanic = Math.round(hispanic * ratio * noise());
+          
+          // Education/Income are averages/medians, so they stay roughly same but with variance
+          const subEdu = Math.max(0, Math.min(100, education * noise()));
+          const subInc = Math.max(0, income * noise());
+
+          features.push({
+            type: 'Feature',
+            id: id * 100 + idx, // New ID: CountyID * 100 + Index
+            properties: {
+              ...feature.properties,
+              countyId: id, // Keep track of parent county
+              stateId: stateId,
+              population: subPop,
+              demVotes: subDem,
+              repVotes: subRep,
+              white: subWhite,
+              black: subBlack,
+              hispanic: subHispanic,
+              education: subEdu,
+              income: subInc
+            },
+            geometry: subFeature.geometry
+          });
         });
       }
     });

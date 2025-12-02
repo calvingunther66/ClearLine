@@ -386,7 +386,8 @@ export class MapEngine {
         }
         
         ctx.fill();
-        ctx.stroke();
+        ctx.fill();
+        // ctx.stroke(); // Hide precinct borders for cleaner look
         
         // Draw Hit
         hitCtx.fillStyle = this.idToColor(precinct.id);
@@ -448,7 +449,28 @@ export class MapEngine {
 
   public async runAnalysis() {
     try {
-      await workerManager.sendMessage('RUN_ANALYSIS', {});
+      const result = await workerManager.sendMessage('RUN_ANALYSIS', {});
+      const { analysis, projections } = result as { analysis: any, projections: { id: number, dem: number, rep: number }[] };
+      
+      // Update projections in DataStore
+      if (projections) {
+        projections.forEach(p => {
+          const precinct = this.dataStore.getPrecinct(p.id);
+          if (precinct) {
+            precinct.projectedDemVotes = p.dem;
+            precinct.projectedRepVotes = p.rep;
+          }
+        });
+      }
+      
+      // Trigger re-render to show political swing
+      this.render();
+      
+      // We might want to expose analysis results to the UI via a callback or store
+      // For now, we just log it or let the UI pull it if it was stored in DataStore (it's not).
+      // The StatsPanel calculates its own stats from the DataStore, so it might need these projections too.
+      // Since we updated DataStore, StatsPanel should pick it up if it uses projected votes.
+      
     } catch (e) {
       console.error("Analysis failed:", e);
     }

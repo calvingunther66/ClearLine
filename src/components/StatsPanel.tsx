@@ -33,9 +33,15 @@ export const StatsPanel: React.FC<StatsPanelProps> = ({ selectedPrecinct }) => {
           </h2>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-slate-400">FIPS ID</span>
+              <span className="text-slate-400">Precinct ID</span>
               <span className="font-mono text-slate-200">{selectedPrecinct.id}</span>
             </div>
+            {selectedPrecinct.countyId && (
+              <div className="flex justify-between">
+                <span className="text-slate-400">County ID</span>
+                <span className="font-mono text-slate-500">{selectedPrecinct.countyId}</span>
+              </div>
+            )}
             <div className="flex justify-between">
               <span className="text-slate-400">Population</span>
               <span className="font-mono text-slate-200">{selectedPrecinct.stats[0].toLocaleString()}</span>

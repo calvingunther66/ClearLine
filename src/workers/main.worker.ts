@@ -226,7 +226,36 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
           }
           
           if (merged) {
-            districts.set(districtId, merged);
+            // 1. Simplify to remove jagged edges from grid/voronoi union
+            const simplified = turf.simplify(merged, { tolerance: 0.5, highQuality: true });
+            
+            // 2. Smooth with Bezier Spline
+            // Helper to smooth a ring (array of coords)
+            const smoothRing = (ring: number[][]) => {
+              if (ring.length < 3) return ring;
+              try {
+                const line = turf.lineString(ring);
+                const smoothed = turf.bezierSpline(line, { resolution: 10000, sharpness: 0.85 }); // Adjust sharpness as needed
+                return smoothed.geometry.coordinates;
+              } catch {
+                return ring;
+              }
+            };
+
+            // Apply to Polygon or MultiPolygon
+            let smoothedFeature: Feature<Polygon | MultiPolygon> = simplified;
+            
+            if (simplified.geometry.type === 'Polygon') {
+              const poly = simplified.geometry as Polygon;
+              const newCoords = poly.coordinates.map(ring => smoothRing(ring));
+              smoothedFeature = turf.polygon(newCoords);
+            } else if (simplified.geometry.type === 'MultiPolygon') {
+              const multi = simplified.geometry as MultiPolygon;
+              const newCoords = multi.coordinates.map(poly => poly.map(ring => smoothRing(ring)));
+              smoothedFeature = turf.multiPolygon(newCoords);
+            }
+
+            districts.set(districtId, smoothedFeature);
           }
         });
 
@@ -345,7 +374,39 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
             history
           };
         });
-        result = runAnalysis({ districts });
+
+
+        // Partisan Swing Simulation
+        const projections: { id: number, dem: number, rep: number }[] = [];
+        const SWING_FACTOR = 0.15;
+
+        precinctDistrictMap.forEach((districtId, precinctId) => {
+          const stats = precinctStatsMap.get(precinctId);
+          if (!stats) return;
+
+          const dStats = districtStats.get(districtId);
+          if (!dStats || dStats.population === 0) return;
+
+          const dTotal = dStats.demVotes + dStats.repVotes;
+          const dDemShare = dTotal > 0 ? dStats.demVotes / dTotal : 0.5;
+
+          const pDem = stats[1];
+          const pRep = stats[2];
+          const pTotal = pDem + pRep;
+          const pDemShare = pTotal > 0 ? pDem / pTotal : 0.5;
+
+          // Swing: Shift precinct lean towards district lean
+          const swing = (dDemShare - pDemShare) * SWING_FACTOR;
+          const newDemShare = Math.max(0, Math.min(1, pDemShare + swing));
+          
+          const newDem = Math.round(pTotal * newDemShare);
+          const newRep = pTotal - newDem;
+
+          projections.push({ id: precinctId, dem: newDem, rep: newRep });
+        });
+
+        const analysis = runAnalysis({ districts });
+        result = { analysis, projections };
         break;
       }
       default:
