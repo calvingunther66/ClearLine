@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 
 
 interface ControlsPanelProps {
-  onUpdate: () => void;
   onGenerateBorders: () => void;
   viewMode: 'district' | 'political';
   onSetViewMode: (mode: 'district' | 'political') => void;
@@ -11,7 +10,6 @@ interface ControlsPanelProps {
 }
 
 export const ControlsPanel: React.FC<ControlsPanelProps> = ({ 
-  onUpdate, 
   onGenerateBorders, 
   viewMode, 
   onSetViewMode,

@@ -1,4 +1,4 @@
-import type { WorkerMessage, WorkerResponse, Constraint } from '../core/types';
+import type { WorkerMessage, WorkerResponse, Constraint, PrecinctStats } from '../core/types';
 import { runAnalysis } from '../core/analysis';
 import { seedAndGrow, simulatedAnnealing } from '../core/algorithms';
 import * as turf from '@turf/turf';
@@ -10,6 +10,7 @@ const precinctDistrictMap = new Map<number, number>();
 const precinctStatsMap = new Map<number, number[]>(); // [pop, dem, rep, white, black, hispanic]
 const precinctStateMap = new Map<number, number>();
 const precinctCoordsMap = new Map<number, number[]>(); // Store coords for border generation
+const precinctHistoryMap = new Map<number, PrecinctStats[]>();
 
 self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
   const { id, type, payload } = e.data;
@@ -21,13 +22,16 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         result = 'PONG';
         break;
       case 'LOAD_DATA': {
-        const { precincts } = payload as { precincts: { id: number, population: number, districtId: number, stateId: number, coords: number[], stats: number[] }[] };
+        const { precincts } = payload as { precincts: { id: number, population: number, districtId: number, stateId: number, coords: number[], stats: number[], history?: PrecinctStats[] }[] };
         precincts.forEach(p => {
           precinctDistrictMap.set(p.id, p.districtId);
           precinctStatsMap.set(p.id, p.stats);
           precinctStateMap.set(p.id, p.stateId);
           if (p.coords) {
             precinctCoordsMap.set(p.id, p.coords);
+          }
+          if (p.history) {
+            precinctHistoryMap.set(p.id, p.history);
           }
         });
         result = true;
@@ -228,6 +232,8 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
           incomeProduct: number
         }>();
         
+        const districtHistory = new Map<number, Map<number, PrecinctStats>>(); // districtId -> year -> stats
+
         precinctDistrictMap.forEach((districtId, precinctId) => {
           const stats = precinctStatsMap.get(precinctId);
           if (!stats) return; // Should have stats
@@ -256,20 +262,75 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
           d.hispanic += stats[5];
           d.educationProduct += (stats[6] || 0) * pop;
           d.incomeProduct += (stats[7] || 0) * pop;
+
+          // History Aggregation
+          const history = precinctHistoryMap.get(precinctId);
+          if (history) {
+            if (!districtHistory.has(districtId)) {
+              districtHistory.set(districtId, new Map());
+            }
+            const dHist = districtHistory.get(districtId)!;
+            history.forEach(h => {
+              const current = dHist.get(h.year);
+              if (!current) {
+                dHist.set(h.year, { ...h }); // Clone initial
+              } else {
+                // Aggregate
+                current.population += h.population;
+                current.demVotes += h.demVotes;
+                current.repVotes += h.repVotes;
+                current.white += h.white;
+                current.black += h.black;
+                current.hispanic += h.hispanic;
+                current.education += h.education; // Sum for now, avg later? No, education is %, so we need weighted avg.
+                // Actually, PrecinctStats education/income are raw numbers or %?
+                // In MapEngine: education * (1 - yearsBack * 0.01)
+                // In types.ts: education: number
+                // In DataStore: stats[6] is education.
+                // Wait, in MapEngine stats[6] is education.
+                // In RUN_ANALYSIS aggregation: d.educationProduct += (stats[6] || 0) * pop;
+                // So stats[6] is a rate (0-1 or 0-100).
+                // PrecinctStats has education: number.
+                // Let's assume PrecinctStats.education is the RATE.
+                // To aggregate rates for a district, we need weighted average by population.
+                // But here we are just summing them?
+                // For simplicity in this "fun" mode, let's just sum the raw counts if we had them.
+                // But we don't have raw counts for education/income in PrecinctStats, we have the rate.
+                // We should probably store the weighted sum in the map and then divide by total pop at the end.
+                // But PrecinctStats structure is fixed.
+                // Let's just do a simple average for now or weighted average if we can.
+                // We can't easily store the weighted sum in a PrecinctStats object if it expects a rate.
+                // Let's cheat slightly and store the weighted sum in 'education' and 'income' properties of the accumulator,
+                // and then divide by population when converting to array.
+                current.education += h.education * h.population;
+                current.income += h.income * h.population;
+              }
+            });
+          }
         });
         
-        const districts = Array.from(districtStats.entries()).map(([id, s]) => ({
-          id,
-          population: s.population,
-          demVotes: s.demVotes,
-          repVotes: s.repVotes,
-          white: s.white,
-          black: s.black,
-          hispanic: s.hispanic,
-          education: s.population > 0 ? s.educationProduct / s.population : 0,
-          income: s.population > 0 ? s.incomeProduct / s.population : 0,
-          efficiencyGap: 0 // Calculated in runAnalysis
-        }));
+        const districts = Array.from(districtStats.entries()).map(([id, s]) => {
+          const dHistMap = districtHistory.get(id);
+          const history = dHistMap ? Array.from(dHistMap.entries()).map(([, stats]) => ({
+            ...stats,
+            education: stats.population > 0 ? stats.education / stats.population : 0,
+            income: stats.population > 0 ? stats.income / stats.population : 0
+          })).sort((a, b) => a.year - b.year) : [];
+          
+          return {
+            id,
+            population: s.population,
+            demVotes: s.demVotes,
+            repVotes: s.repVotes,
+            white: s.white,
+            black: s.black,
+            hispanic: s.hispanic,
+            education: s.population > 0 ? s.educationProduct / s.population : 0,
+            income: s.population > 0 ? s.incomeProduct / s.population : 0,
+            efficiencyGap: 0, // Calculated in runAnalysis
+            history
+          };
+        });
         result = runAnalysis({ districts });
         break;
       }

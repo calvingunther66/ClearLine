@@ -255,7 +255,27 @@ export class MapEngine {
         const stats = new Int32Array([pop, dem, rep, white, black, hispanic, education, income]); 
         
         const stateId = feature.properties?.stateId || 0;
-        this.dataStore.addPrecinct(index, float32Coords, stats, stateId, stateId);
+        
+        // Simulate History (1980-2015)
+        const history = [1980, 1985, 1990, 1995, 2000, 2005, 2010, 2015].map(year => {
+          // Random growth/decline factor based on year difference from 2020
+          const yearsBack = 2020 - year;
+          const growthFactor = 1 - (Math.random() * 0.02 - 0.005) * yearsBack; // Avg 1.5% growth/year reverse
+          
+          return {
+            year,
+            population: Math.round(pop * growthFactor),
+            demVotes: Math.round(dem * growthFactor * (1 + (Math.random() * 0.1 - 0.05))),
+            repVotes: Math.round(rep * growthFactor * (1 + (Math.random() * 0.1 - 0.05))),
+            white: Math.round(white * growthFactor),
+            black: Math.round(black * growthFactor),
+            hispanic: Math.round(hispanic * growthFactor * (1 - yearsBack * 0.015)), // Hispanic pop growing faster, so past was much lower
+            education: education * (1 - yearsBack * 0.01), // Education increasing over time
+            income: income * (1 - yearsBack * 0.02) // Income increasing (nominal)
+          };
+        });
+
+        this.dataStore.addPrecinct(index, float32Coords, stats, stateId, stateId, history);
       });
       
       // Send to worker

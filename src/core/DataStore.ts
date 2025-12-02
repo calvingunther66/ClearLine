@@ -1,4 +1,5 @@
 import { SpatialIndex } from './SpatialIndex';
+import type { PrecinctStats } from './types';
 
 export interface PrecinctData {
   id: number;
@@ -7,6 +8,7 @@ export interface PrecinctData {
   districtId: number;
   stateId: number;
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
+  history?: PrecinctStats[];
 }
 
 export class DataStore {
@@ -18,7 +20,7 @@ export class DataStore {
     // Initialize with empty state
   }
 
-  public addPrecinct(id: number, coords: Float32Array, stats: Int32Array, districtId: number, stateId: number) {
+  public addPrecinct(id: number, coords: Float32Array, stats: Int32Array, districtId: number, stateId: number, history: PrecinctStats[] = []) {
     // Calculate bounds
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (let i = 0; i < coords.length; i += 2) {
@@ -36,7 +38,8 @@ export class DataStore {
       stats,
       districtId,
       stateId,
-      bounds: { minX, minY, maxX, maxY }
+      bounds: { minX, minY, maxX, maxY },
+      history
     };
     this.precincts.set(id, precinct);
     

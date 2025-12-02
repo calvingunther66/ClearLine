@@ -22,9 +22,22 @@ export interface Constraint {
   targetPercent: number; // % of districts that must meet this rule
 }
 
+export interface PrecinctStats {
+  year: number;
+  population: number;
+  demVotes: number;
+  repVotes: number;
+  white: number;
+  black: number;
+  hispanic: number;
+  education: number;
+  income: number;
+}
+
 export interface PrecinctData {
   id: number;
   coords: Float32Array;
   stats: Uint16Array;
   districtId: number;
+  history?: PrecinctStats[];
 }

@@ -96,7 +96,6 @@ function App() {
       <StatsPanel selectedPrecinct={selectedPrecinct} />
       <ConstraintsPanel constraints={constraints} onConstraintsChange={setConstraints} />
       <ControlsPanel 
-        onUpdate={handleUpdate} 
         onGenerateBorders={handleGenerateBorders}
         viewMode={viewMode}
         onSetViewMode={handleSetViewMode}
