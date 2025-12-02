@@ -15,24 +15,48 @@ export const PerformanceMonitor: React.FC = () => {
       frameCount++;
 
       if (now - lastTime >= 1000) {
-        setFps(Math.round((frameCount * 1000) / (now - lastTime)));
+        const currentFps = Math.round((frameCount * 1000) / (now - lastTime));
+        setFps(currentFps);
         frameCount = 0;
         lastTime = now;
 
-        // Check memory if available (Chrome only)
-        const perf = performance as unknown as { memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number } };
-        let memoryUsed = 0;
-        if (perf.memory) {
-          const mem = perf.memory;
-          memoryUsed = Math.round(mem.usedJSHeapSize / 1024 / 1024);
-          setMemory({
-            used: memoryUsed,
-            limit: Math.round(mem.jsHeapSizeLimit / 1024 / 1024),
-          });
-        }
+        // Fetch system stats from backend
+        const updateStats = async () => {
+          try {
+            const res = await fetch('/api/system-stats');
+            if (res.ok) {
+              const stats = await res.json();
+              // stats.memory.used is in bytes, convert to MB
+              const memUsedMB = Math.round(stats.memory.used / 1024 / 1024);
+              const memTotalMB = Math.round(stats.memory.total / 1024 / 1024);
+              
+              setMemory({
+                used: memUsedMB,
+                limit: memTotalMB
+              });
+              
+              // Update worker load with real system stats
+              workerManager.updateLoad(currentFps, memUsedMB);
+            } else {
+              throw new Error('Backend unavailable');
+            }
+          } catch {
+            // Fallback to browser API
+            const perf = performance as unknown as { memory?: { usedJSHeapSize: number; jsHeapSizeLimit: number } };
+            let memoryUsed = 0;
+            if (perf.memory) {
+              const mem = perf.memory;
+              memoryUsed = Math.round(mem.usedJSHeapSize / 1024 / 1024);
+              setMemory({
+                used: memoryUsed,
+                limit: Math.round(mem.jsHeapSizeLimit / 1024 / 1024),
+              });
+            }
+            workerManager.updateLoad(currentFps, memoryUsed);
+          }
+        };
         
-        // Update worker load
-        workerManager.updateLoad(fps, memoryUsed);
+        updateStats();
       }
 
       animationFrameId = requestAnimationFrame(loop);
