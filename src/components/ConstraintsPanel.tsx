@@ -13,6 +13,7 @@ export const ConstraintsPanel: React.FC<ConstraintsPanelProps> = ({ constraints,
     const newConstraint: Constraint = {
       id: Math.random().toString(36).substr(2, 9),
       metric: 'education',
+      metricType: 'value',
       operator: '>',
       value: 50,
       targetPercent: 50
@@ -45,6 +46,14 @@ export const ConstraintsPanel: React.FC<ConstraintsPanelProps> = ({ constraints,
               <div key={c.id} className="bg-slate-800/50 p-2 rounded border border-slate-700 text-xs flex flex-col gap-2">
                 <div className="flex gap-2 items-center">
                   <select 
+                    value={c.metricType || 'value'}
+                    onChange={(e) => updateConstraint(c.id, { metricType: e.target.value as 'value' | 'growth' })}
+                    className="bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-slate-300 w-20 text-xs"
+                  >
+                    <option value="value">Value</option>
+                    <option value="growth">Growth</option>
+                  </select>
+                  <select 
                     value={c.metric}
                     onChange={(e) => updateConstraint(c.id, { metric: e.target.value as Constraint['metric'] })}
                     className="bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-slate-300 flex-1"
@@ -55,8 +64,12 @@ export const ConstraintsPanel: React.FC<ConstraintsPanelProps> = ({ constraints,
                     <option value="white">White</option>
                     <option value="black">Black</option>
                     <option value="hispanic">Hispanic</option>
-                    <option value="education">BA+ %</option>
-                    <option value="income">Income</option>
+                    {(!c.metricType || c.metricType === 'value') && (
+                      <>
+                        <option value="education">BA+ %</option>
+                        <option value="income">Income</option>
+                      </>
+                    )}
                   </select>
                   <select 
                     value={c.operator}
@@ -108,8 +121,9 @@ export const ConstraintsPanel: React.FC<ConstraintsPanelProps> = ({ constraints,
                 {/* Natural Language Sentence */}
                 <div className="text-[10px] text-slate-500 italic border-t border-slate-700/50 pt-1 mt-1">
                   In <strong className="text-purple-400">{c.targetPercent}%</strong> of districts, 
-                  <strong className="text-blue-400"> {c.metric}</strong> should be 
+                  <strong className="text-blue-400"> {c.metricType === 'growth' ? `${c.metric} growth` : c.metric}</strong> should be 
                   <strong className="text-emerald-400"> {c.operator === 'between' ? `between ${c.value} and ${c.maxValue || c.value}` : `${c.operator} ${c.value}`}</strong>
+                  {c.metricType === 'growth' && <span className="text-slate-500"> (avg YoY %)</span>}
                 </div>
               </div>
             ))}

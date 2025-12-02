@@ -16,6 +16,7 @@ export interface WorkerResponse {
 export interface Constraint {
   id: string;
   metric: 'population' | 'demVotes' | 'repVotes' | 'white' | 'black' | 'hispanic' | 'education' | 'income';
+  metricType?: 'value' | 'growth'; // Default to 'value'
   operator: '>' | '<' | '>=' | '<=' | '~=' | 'between';
   value: number;
   maxValue?: number; // For 'between' operator

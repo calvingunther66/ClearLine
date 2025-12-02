@@ -1,5 +1,5 @@
 import type { WorkerMessage, WorkerResponse, Constraint, PrecinctStats } from '../core/types';
-import { runAnalysis } from '../core/analysis';
+import { runAnalysis, calculateLinearRegression } from '../core/analysis';
 import { seedAndGrow, simulatedAnnealing } from '../core/algorithms';
 import * as turf from '@turf/turf';
 import type { Feature, Polygon, MultiPolygon } from 'geojson';
@@ -8,6 +8,7 @@ import { STATE_APPORTIONMENT } from '../core/Apportionment';
 // Worker State
 const precinctDistrictMap = new Map<number, number>();
 const precinctStatsMap = new Map<number, number[]>(); // [pop, dem, rep, white, black, hispanic]
+const precinctSlopesMap = new Map<number, number[]>(); // [popSlope, demSlope, repSlope, whiteSlope, blackSlope, hispanicSlope]
 const precinctStateMap = new Map<number, number>();
 const precinctCoordsMap = new Map<number, number[]>(); // Store coords for border generation
 const precinctHistoryMap = new Map<number, PrecinctStats[]>();
@@ -32,6 +33,18 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
           }
           if (p.history) {
             precinctHistoryMap.set(p.id, p.history);
+            
+            // Calculate Slopes
+            // [pop, dem, rep, white, black, hispanic]
+            const slopes: number[] = [];
+            const metrics = ['population', 'demVotes', 'repVotes', 'white', 'black', 'hispanic'] as const;
+            
+            metrics.forEach(metric => {
+              const data = p.history!.map(h => ({ x: h.year, y: (h as unknown as Record<string, number>)[metric] }));
+              const { slope } = calculateLinearRegression(data);
+              slopes.push(slope);
+            });
+            precinctSlopesMap.set(p.id, slopes);
           }
         });
         result = true;
@@ -107,7 +120,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
       }
       case 'SIMULATED_ANNEALING': {
         const { constraints, runs: userRuns = 1, isAuto = false } = payload as { constraints: Constraint[], runs?: number, isAuto?: boolean };
-        const statePrecincts = new Map<number, { id: number, districtId: number, population: number, x: number, y: number, stats: number[] }[]>();
+        const statePrecincts = new Map<number, { id: number, districtId: number, population: number, x: number, y: number, stats: number[], slopes: number[] }[]>();
         
         precinctDistrictMap.forEach((districtId, precinctId) => {
           const stateId = precinctStateMap.get(precinctId);
@@ -121,7 +134,8 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
               population: precinctStatsMap.get(precinctId)?.[0] || 0,
               x: 0, 
               y: 0,
-              stats: precinctStatsMap.get(precinctId) || []
+              stats: precinctStatsMap.get(precinctId) || [],
+              slopes: precinctSlopesMap.get(precinctId) || []
             });
           }
         });

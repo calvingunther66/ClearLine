@@ -51,7 +51,7 @@ export function seedAndGrow(
 }
 
 export function simulatedAnnealing(
-  precincts: { id: number; districtId: number; population: number; stats?: number[] }[],
+  precincts: { id: number; districtId: number; population: number; stats?: number[]; slopes?: number[] }[],
   config: AlgorithmConfig
 ): { assignment: Map<number, number>, cost: number } {
   const { districtCount, constraints = [] } = config;
@@ -77,16 +77,18 @@ export function simulatedAnnealing(
       black: number,
       hispanic: number,
       eduProd: number,
-      incProd: number
+      incProd: number,
+      slopes: number[] // [pop, dem, rep, white, black, hispanic]
     }>();
 
     precincts.forEach(p => {
       const dId = assignment.get(p.id)!;
       if (!districtStats.has(dId)) {
-        districtStats.set(dId, { pop: 0, dem: 0, rep: 0, white: 0, black: 0, hispanic: 0, eduProd: 0, incProd: 0 });
+        districtStats.set(dId, { pop: 0, dem: 0, rep: 0, white: 0, black: 0, hispanic: 0, eduProd: 0, incProd: 0, slopes: [0,0,0,0,0,0] });
       }
       const ds = districtStats.get(dId)!;
       const stats = p.stats || [0,0,0,0,0,0,0,0];
+      const slopes = p.slopes || [0,0,0,0,0,0];
       
       ds.pop += stats[0];
       ds.dem += stats[1];
@@ -96,6 +98,10 @@ export function simulatedAnnealing(
       ds.hispanic += stats[5];
       ds.eduProd += (stats[6] || 0) * stats[0];
       ds.incProd += (stats[7] || 0) * stats[0];
+      
+      for(let i=0; i<6; i++) {
+        ds.slopes[i] += slopes[i];
+      }
       
       totalPop += stats[0];
     });
@@ -118,15 +124,38 @@ export function simulatedAnnealing(
           totalDistricts++;
           
           let val = 0;
-          switch (c.metric) {
-            case 'population': val = ds.pop; break;
-            case 'demVotes': val = ds.dem; break;
-            case 'repVotes': val = ds.rep; break;
-            case 'white': val = ds.white; break;
-            case 'black': val = ds.black; break;
-            case 'hispanic': val = ds.hispanic; break;
-            case 'education': val = ds.eduProd / ds.pop; break;
-            case 'income': val = ds.incProd / ds.pop; break;
+          
+          if (c.metricType === 'growth') {
+            // Calculate growth %: (Total Slope / Total Current Value) * 100
+            // Slopes are stored in ds.slopes: [pop, dem, rep, white, black, hispanic]
+            let slope = 0;
+            let currentVal = 0;
+            
+            switch (c.metric) {
+              case 'population': slope = ds.slopes[0]; currentVal = ds.pop; break;
+              case 'demVotes': slope = ds.slopes[1]; currentVal = ds.dem; break;
+              case 'repVotes': slope = ds.slopes[2]; currentVal = ds.rep; break;
+              case 'white': slope = ds.slopes[3]; currentVal = ds.white; break;
+              case 'black': slope = ds.slopes[4]; currentVal = ds.black; break;
+              case 'hispanic': slope = ds.slopes[5]; currentVal = ds.hispanic; break;
+              default: slope = 0; currentVal = 1; // Fallback
+            }
+            
+            if (currentVal !== 0) {
+              val = (slope / currentVal) * 100;
+            }
+          } else {
+            // Value based
+            switch (c.metric) {
+              case 'population': val = ds.pop; break;
+              case 'demVotes': val = ds.dem; break;
+              case 'repVotes': val = ds.rep; break;
+              case 'white': val = ds.white; break;
+              case 'black': val = ds.black; break;
+              case 'hispanic': val = ds.hispanic; break;
+              case 'education': val = ds.eduProd / ds.pop; break;
+              case 'income': val = ds.incProd / ds.pop; break;
+            }
           }
           
           let meets = false;
