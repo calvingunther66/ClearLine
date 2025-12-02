@@ -148,8 +148,8 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
           // Heuristic: Base 100 + 500 per constraint
           runs = 100 + (constraints.length * 500);
         }
-        // Cap at 100,000
-        runs = Math.min(runs, 100000);
+        // Cap at 50,000 to prevent browser hang
+        runs = Math.min(runs, 50000);
 
         statePrecincts.forEach((precincts, stateId) => {
           const apportionment = STATE_APPORTIONMENT[stateId];

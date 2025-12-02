@@ -7,6 +7,7 @@ export interface PrecinctData {
   stats: Int32Array; // [Pop, Dem, Rep, White, Black, Hispanic, Education, Income]
   districtId: number;
   stateId: number;
+  countyId?: number;
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
   projectedDemVotes?: number;
   projectedRepVotes?: number;
@@ -22,7 +23,7 @@ export class DataStore {
     // Initialize with empty state
   }
 
-  public addPrecinct(id: number, coords: Float32Array, stats: Int32Array, districtId: number, stateId: number, history: PrecinctStats[] = []) {
+  public addPrecinct(id: number, coords: Float32Array, stats: Int32Array, districtId: number, stateId: number, countyId?: number, history: PrecinctStats[] = []) {
     // Calculate bounds
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (let i = 0; i < coords.length; i += 2) {
@@ -40,6 +41,7 @@ export class DataStore {
       stats,
       districtId,
       stateId,
+      countyId,
       bounds: { minX, minY, maxX, maxY },
       history
     };

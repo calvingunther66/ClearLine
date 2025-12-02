@@ -60,102 +60,120 @@ export function simulatedAnnealing(
   // Initialize with current assignment
   precincts.forEach(p => currentAssignment.set(p.id, p.districtId));
   
+  // Pre-allocate data structures for cost calculation to avoid GC thrashing
+  // We use flat arrays for district stats: [pop, dem, rep, white, black, hispanic, eduProd, incProd] * districtCount
+  // And slopes: [pop, dem, rep, white, black, hispanic] * districtCount
+  const STATS_STRIDE = 8;
+  const SLOPES_STRIDE = 6;
+  
+  const districtStatsBuffer = new Float64Array((districtCount + 1) * STATS_STRIDE); // +1 for 1-based indexing safety
+  const districtSlopesBuffer = new Float64Array((districtCount + 1) * SLOPES_STRIDE);
+
+  // Helper to clear buffers
+  const clearBuffers = () => {
+    districtStatsBuffer.fill(0);
+    districtSlopesBuffer.fill(0);
+  };
+
   // Helper to calculate cost
   const calculateCost = (assignment: Map<number, number>): number => {
     let cost = 0;
     
-    // 1. Population Balance Cost (Standard)
-    let totalPop = 0;
+    // 1. Reset Aggregators
+    clearBuffers();
     
-    // 2. Constraint Cost
-    // We need to aggregate stats for each district to check constraints
-    const districtStats = new Map<number, {
-      pop: number,
-      dem: number,
-      rep: number,
-      white: number,
-      black: number,
-      hispanic: number,
-      eduProd: number,
-      incProd: number,
-      slopes: number[] // [pop, dem, rep, white, black, hispanic]
-    }>();
+    let totalPop = 0;
 
-    precincts.forEach(p => {
+    // 2. Aggregate Stats (Hot Loop)
+    // We iterate precincts and sum up stats into the buffers
+    const len = precincts.length;
+    for (let i = 0; i < len; i++) {
+      const p = precincts[i];
       const dId = assignment.get(p.id)!;
-      if (!districtStats.has(dId)) {
-        districtStats.set(dId, { pop: 0, dem: 0, rep: 0, white: 0, black: 0, hispanic: 0, eduProd: 0, incProd: 0, slopes: [0,0,0,0,0,0] });
-      }
-      const ds = districtStats.get(dId)!;
+      
       const stats = p.stats || [0,0,0,0,0,0,0,0];
       const slopes = p.slopes || [0,0,0,0,0,0];
       
-      ds.pop += stats[0];
-      ds.dem += stats[1];
-      ds.rep += stats[2];
-      ds.white += stats[3];
-      ds.black += stats[4];
-      ds.hispanic += stats[5];
-      ds.eduProd += (stats[6] || 0) * stats[0];
-      ds.incProd += (stats[7] || 0) * stats[0];
+      const statsOffset = dId * STATS_STRIDE;
+      const slopesOffset = dId * SLOPES_STRIDE;
       
-      for(let i=0; i<6; i++) {
-        ds.slopes[i] += slopes[i];
-      }
+      // Unroll for performance
+      districtStatsBuffer[statsOffset] += stats[0];     // pop
+      districtStatsBuffer[statsOffset + 1] += stats[1]; // dem
+      districtStatsBuffer[statsOffset + 2] += stats[2]; // rep
+      districtStatsBuffer[statsOffset + 3] += stats[3]; // white
+      districtStatsBuffer[statsOffset + 4] += stats[4]; // black
+      districtStatsBuffer[statsOffset + 5] += stats[5]; // hispanic
+      districtStatsBuffer[statsOffset + 6] += (stats[6] || 0) * stats[0]; // eduProd
+      districtStatsBuffer[statsOffset + 7] += (stats[7] || 0) * stats[0]; // incProd
       
+      districtSlopesBuffer[slopesOffset] += slopes[0];
+      districtSlopesBuffer[slopesOffset + 1] += slopes[1];
+      districtSlopesBuffer[slopesOffset + 2] += slopes[2];
+      districtSlopesBuffer[slopesOffset + 3] += slopes[3];
+      districtSlopesBuffer[slopesOffset + 4] += slopes[4];
+      districtSlopesBuffer[slopesOffset + 5] += slopes[5];
+
       totalPop += stats[0];
-    });
+    }
 
     const targetPop = totalPop / districtCount;
     
-    // Population Deviation Cost
-    districtStats.forEach(ds => {
-      cost += Math.abs(ds.pop - targetPop) / targetPop;
-    });
+    // 3. Calculate Cost
+    // Population Deviation
+    for (let d = 1; d <= districtCount; d++) {
+      const pop = districtStatsBuffer[d * STATS_STRIDE];
+      if (pop > 0) { // Only count active districts
+         cost += Math.abs(pop - targetPop) / targetPop;
+      }
+    }
 
     // Constraint Cost
     if (constraints.length > 0) {
-      constraints.forEach(c => {
+      const cLen = constraints.length;
+      for (let i = 0; i < cLen; i++) {
+        const c = constraints[i];
         let districtsMeeting = 0;
-        let totalDistricts = 0; // Only count districts that exist/have pop
+        let totalDistricts = 0;
         
-        districtStats.forEach(ds => {
-          if (ds.pop === 0) return;
+        for (let d = 1; d <= districtCount; d++) {
+          const offset = d * STATS_STRIDE;
+          const pop = districtStatsBuffer[offset];
+          
+          if (pop === 0) continue;
           totalDistricts++;
           
           let val = 0;
           
           if (c.metricType === 'growth') {
-            // Calculate growth %: (Total Slope / Total Current Value) * 100
-            // Slopes are stored in ds.slopes: [pop, dem, rep, white, black, hispanic]
-            let slope = 0;
-            let currentVal = 0;
-            
-            switch (c.metric) {
-              case 'population': slope = ds.slopes[0]; currentVal = ds.pop; break;
-              case 'demVotes': slope = ds.slopes[1]; currentVal = ds.dem; break;
-              case 'repVotes': slope = ds.slopes[2]; currentVal = ds.rep; break;
-              case 'white': slope = ds.slopes[3]; currentVal = ds.white; break;
-              case 'black': slope = ds.slopes[4]; currentVal = ds.black; break;
-              case 'hispanic': slope = ds.slopes[5]; currentVal = ds.hispanic; break;
-              default: slope = 0; currentVal = 1; // Fallback
-            }
-            
-            if (currentVal !== 0) {
-              val = (slope / currentVal) * 100;
-            }
+             const sOffset = d * SLOPES_STRIDE;
+             let slope = 0;
+             let currentVal = 0;
+             
+             switch (c.metric) {
+               case 'population': slope = districtSlopesBuffer[sOffset]; currentVal = pop; break;
+               case 'demVotes': slope = districtSlopesBuffer[sOffset + 1]; currentVal = districtStatsBuffer[offset + 1]; break;
+               case 'repVotes': slope = districtSlopesBuffer[sOffset + 2]; currentVal = districtStatsBuffer[offset + 2]; break;
+               case 'white': slope = districtSlopesBuffer[sOffset + 3]; currentVal = districtStatsBuffer[offset + 3]; break;
+               case 'black': slope = districtSlopesBuffer[sOffset + 4]; currentVal = districtStatsBuffer[offset + 4]; break;
+               case 'hispanic': slope = districtSlopesBuffer[sOffset + 5]; currentVal = districtStatsBuffer[offset + 5]; break;
+               default: slope = 0; currentVal = 1;
+             }
+             
+             if (currentVal !== 0) {
+               val = (slope / currentVal) * 100;
+             }
           } else {
-            // Value based
-            switch (c.metric) {
-              case 'population': val = ds.pop; break;
-              case 'demVotes': val = ds.dem; break;
-              case 'repVotes': val = ds.rep; break;
-              case 'white': val = ds.white; break;
-              case 'black': val = ds.black; break;
-              case 'hispanic': val = ds.hispanic; break;
-              case 'education': val = ds.eduProd / ds.pop; break;
-              case 'income': val = ds.incProd / ds.pop; break;
-            }
+             switch (c.metric) {
+               case 'population': val = pop; break;
+               case 'demVotes': val = districtStatsBuffer[offset + 1]; break;
+               case 'repVotes': val = districtStatsBuffer[offset + 2]; break;
+               case 'white': val = districtStatsBuffer[offset + 3]; break;
+               case 'black': val = districtStatsBuffer[offset + 4]; break;
+               case 'hispanic': val = districtStatsBuffer[offset + 5]; break;
+               case 'education': val = districtStatsBuffer[offset + 6] / pop; break;
+               case 'income': val = districtStatsBuffer[offset + 7] / pop; break;
+             }
           }
           
           let meets = false;
@@ -165,7 +183,6 @@ export function simulatedAnnealing(
             case '>=': meets = val >= c.value; break;
             case '<=': meets = val <= c.value; break;
             case '~=': {
-              // Approx match within 5% tolerance
               const tolerance = c.value * 0.05;
               meets = val >= (c.value - tolerance) && val <= (c.value + tolerance);
               break;
@@ -178,12 +195,12 @@ export function simulatedAnnealing(
           }
           
           if (meets) districtsMeeting++;
-        });
+        }
         
         const percentMet = (districtsMeeting / Math.max(1, totalDistricts)) * 100;
         const deviation = Math.abs(percentMet - c.targetPercent);
-        cost += deviation * 10; // Weight constraints heavily
-      });
+        cost += deviation * 10;
+      }
     }
 
     return cost;
@@ -200,10 +217,6 @@ export function simulatedAnnealing(
     const p = precincts[randomIdx];
     
     const oldDistrict = currentAssignment.get(p.id)!;
-    
-    // Propose move to neighbor district? 
-    // For simplicity, just random district, but better to pick neighbor.
-    // Let's pick a random district for now (simpler than building adjacency graph here).
     const newDistrict = Math.floor(Math.random() * districtCount) + 1;
     
     if (newDistrict !== oldDistrict) {

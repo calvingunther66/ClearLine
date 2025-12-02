@@ -191,13 +191,75 @@ export class MapEngine {
   }
 
   public async loadInitialData() {
-    console.log("Loading initial data...");
-    
     try {
-      const { features, bounds } = await DataGenerator.loadUSData();
+      console.log("Loading initial data...");
+      const startTime = performance.now();
       
-      // Calculate transform to fit bounds
-      const [minX, minY, maxX, maxY] = bounds;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      
+      // Stream data from generator
+      const generator = DataGenerator.loadUSDataGenerator();
+      
+      for await (const { features, bounds } of generator) {
+        // Update bounds
+        minX = Math.min(minX, bounds[0]);
+        minY = Math.min(minY, bounds[1]);
+        maxX = Math.max(maxX, bounds[2]);
+        maxY = Math.max(maxY, bounds[3]);
+
+        features.forEach((feature) => {
+           const id = Number(feature.id);
+           
+           let coords: number[] = [];
+           const geometry = feature.geometry;
+
+           if (geometry.type === 'Polygon') {
+             coords = (geometry.coordinates[0] as number[][]).flat();
+           } else if (geometry.type === 'MultiPolygon') {
+             const multiPoly = geometry as MultiPolygon;
+             coords = (multiPoly.coordinates[0][0] as number[][]).flat();
+           }
+
+           const float32Coords = new Float32Array(coords);
+           
+           // Stats from feature properties
+           const pop = feature.properties?.population || 1000;
+           const dem = feature.properties?.demVotes || 0;
+           const rep = feature.properties?.repVotes || 0;
+           const white = feature.properties?.white || 0;
+           const black = feature.properties?.black || 0;
+           const hispanic = feature.properties?.hispanic || 0;
+           const education = feature.properties?.education || 0;
+           const income = feature.properties?.income || 0;
+           
+           const stats = new Int32Array([pop, dem, rep, white, black, hispanic, education, income]); 
+           
+           const stateId = feature.properties?.stateId || 0;
+           
+           // Simulate History (1980-2015)
+           const history = [1980, 1985, 1990, 1995, 2000, 2005, 2010, 2015].map(year => {
+             const yearsBack = 2020 - year;
+             const growthFactor = 1 - (Math.random() * 0.02 - 0.005) * yearsBack;
+             
+             return {
+               year,
+               population: Math.round(pop * growthFactor),
+               demVotes: Math.round(dem * growthFactor * (1 + (Math.random() * 0.1 - 0.05))),
+               repVotes: Math.round(rep * growthFactor * (1 + (Math.random() * 0.1 - 0.05))),
+               white: Math.round(white * growthFactor),
+               black: Math.round(black * growthFactor),
+               hispanic: Math.round(hispanic * growthFactor * (1 - yearsBack * 0.015)),
+               education: education * (1 - yearsBack * 0.01),
+               income: income * (1 - yearsBack * 0.02)
+             };
+           });
+
+           const countyId = feature.properties?.countyId;
+           this.dataStore.addPrecinct(id, float32Coords, stats, stateId, stateId, countyId, history);
+        });
+      }
+
+      // Set transform based on bounds
       const dataWidth = maxX - minX;
       const dataHeight = maxY - minY;
       
@@ -216,77 +278,32 @@ export class MapEngine {
         };
       }
 
-      features.forEach((feature, index) => {
-        // Convert GeoJSON polygon to Float32Array
-        // We need to flatten the coordinates. 
-        // Note: DataStore currently supports simple Polygons. 
-        // For MultiPolygons, we might need to simplify or split them.
-        // For now, let's take the largest polygon if it's a MultiPolygon, or just the first.
-        // Or better, DataStore should handle MultiPolygons? 
-        // Current DataStore expects a single Float32Array of coords.
-        // Let's flatten all rings into one array separated by NaNs or just take the outer ring of the first polygon for simplicity in this demo.
-        // Actually, DataGenerator already projected them to [x,y].
-        
-        const geometry = feature.geometry;
-        let coords: number[] = [];
-        
-        if (geometry.type === 'Polygon') {
-          const poly = geometry as Polygon;
-          coords = (poly.coordinates[0] as number[][]).flat();
-        } else if (geometry.type === 'MultiPolygon') {
-          // Flatten all polygons? Or just take the first?
-          // Taking the first is safest for now to avoid rendering artifacts with simple line drawing
-          const multiPoly = geometry as MultiPolygon;
-          coords = (multiPoly.coordinates[0][0] as number[][]).flat();
-        }
-
-        const float32Coords = new Float32Array(coords);
-        
-        // Stats from feature properties
-        const pop = feature.properties?.population || 1000;
-        const dem = feature.properties?.demVotes || 0;
-        const rep = feature.properties?.repVotes || 0;
-        const white = feature.properties?.white || 0;
-        const black = feature.properties?.black || 0;
-        const hispanic = feature.properties?.hispanic || 0;
-        const education = feature.properties?.education || 0;
-        const income = feature.properties?.income || 0;
-        
-        const stats = new Int32Array([pop, dem, rep, white, black, hispanic, education, income]); 
-        
-        const stateId = feature.properties?.stateId || 0;
-        
-        // Simulate History (1980-2015)
-        const history = [1980, 1985, 1990, 1995, 2000, 2005, 2010, 2015].map(year => {
-          // Random growth/decline factor based on year difference from 2020
-          const yearsBack = 2020 - year;
-          const growthFactor = 1 - (Math.random() * 0.02 - 0.005) * yearsBack; // Avg 1.5% growth/year reverse
-          
-          return {
-            year,
-            population: Math.round(pop * growthFactor),
-            demVotes: Math.round(dem * growthFactor * (1 + (Math.random() * 0.1 - 0.05))),
-            repVotes: Math.round(rep * growthFactor * (1 + (Math.random() * 0.1 - 0.05))),
-            white: Math.round(white * growthFactor),
-            black: Math.round(black * growthFactor),
-            hispanic: Math.round(hispanic * growthFactor * (1 - yearsBack * 0.015)), // Hispanic pop growing faster, so past was much lower
-            education: education * (1 - yearsBack * 0.01), // Education increasing over time
-            income: income * (1 - yearsBack * 0.02) // Income increasing (nominal)
-          };
-        });
-
-        this.dataStore.addPrecinct(index, float32Coords, stats, stateId, stateId, history);
-      });
+      console.log(`Processed all features in ${performance.now() - startTime}ms. Rendering...`);
       
-      // Send to worker
-      const precinctPayload = Array.from(this.dataStore.getAllPrecincts()).map(p => ({
-        id: p.id,
-        stats: Array.from(p.stats), // Send full stats
-        districtId: p.districtId,
-        stateId: p.stateId,
-        coords: Array.from(p.coords)
-      }));
-      workerManager.sendMessage('LOAD_DATA', { precincts: precinctPayload });
+      // Send to worker in chunks to avoid freezing UI
+      const precincts = Array.from(this.dataStore.getAllPrecincts());
+      const BATCH_SIZE = 2000;
+      
+      console.log(`Sending ${precincts.length} precincts to worker in batches of ${BATCH_SIZE}...`);
+      
+      for (let i = 0; i < precincts.length; i += BATCH_SIZE) {
+        const batch = precincts.slice(i, i + BATCH_SIZE).map(p => ({
+          id: p.id,
+          stats: Array.from(p.stats),
+          districtId: p.districtId,
+          stateId: p.stateId,
+          coords: p.coords, // Send Float32Array directly (Transferable-ish)
+          history: p.history
+        }));
+        
+        workerManager.sendMessage('LOAD_DATA', { precincts: batch });
+        
+        // Yield to main thread
+        if (i % (BATCH_SIZE * 2) === 0) {
+          await new Promise(r => setTimeout(r, 0));
+        }
+      }
+      console.log("All data sent to worker.");
       
       this.render();
     } catch (e) {
@@ -431,8 +448,6 @@ export class MapEngine {
         }
       });
       
-      this.render();
-      this.runAnalysis();
     } catch (e) {
       console.error("Auto redistrict failed:", e);
     }
@@ -441,7 +456,7 @@ export class MapEngine {
   public async runAnalysis() {
     try {
       const result = await workerManager.sendMessage('RUN_ANALYSIS', {});
-      const { projections } = result as { analysis: any, projections: { id: number, dem: number, rep: number }[] };
+      const { projections } = result as { analysis: unknown, projections: { id: number, dem: number, rep: number }[] };
       
       // Update projections in DataStore
       if (projections) {

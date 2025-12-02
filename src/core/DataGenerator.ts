@@ -45,7 +45,8 @@ export class DataGenerator {
     }
   }
 
-  static async loadUSData(): Promise<{ features: Feature<Polygon | MultiPolygon>[], bounds: [number, number, number, number] }> {
+  // Stream features to avoid holding everything in memory
+  static async *loadUSDataGenerator(): AsyncGenerator<{ features: Feature<Polygon | MultiPolygon>[], bounds: [number, number, number, number] }> {
     try {
       // Fetch US Atlas data (Topology)
       const topologyPromise = fetch('/data/counties-10m.json').then(r => {
@@ -140,10 +141,13 @@ export class DataGenerator {
       const height = 600;
       const projection = geoAlbersUsa().scale(1300).translate([width / 2, height / 2]);
 
-      const features: Feature<Polygon | MultiPolygon>[] = [];
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
-      geojson.features.forEach((feature) => {
+      // Process features in chunks
+      const CHUNK_SIZE = 50; 
+      let chunk: Feature<Polygon | MultiPolygon>[] = [];
+
+      for (const feature of geojson.features) {
         const geometry = feature.geometry;
         const newCoordinates: number[][][] | number[][][][] = [];
 
@@ -246,7 +250,7 @@ export class DataGenerator {
             const subEdu = Math.max(0, Math.min(100, education * noise()));
             const subInc = Math.max(0, income * noise());
 
-            features.push({
+            chunk.push({
               type: 'Feature',
               id: id * 100 + idx, 
               properties: {
@@ -266,9 +270,19 @@ export class DataGenerator {
             });
           });
         }
-      });
 
-      return { features, bounds: [minX, minY, maxX, maxY] };
+        if (chunk.length >= CHUNK_SIZE) {
+          yield { features: chunk, bounds: [minX, minY, maxX, maxY] };
+          chunk = [];
+          // Yield to event loop to allow GC
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+      }
+
+      // Yield remaining
+      if (chunk.length > 0) {
+        yield { features: chunk, bounds: [minX, minY, maxX, maxY] };
+      }
 
     } catch (e) {
       console.error("Failed to load real data, falling back to synthetic grid", e);
@@ -318,7 +332,7 @@ export class DataGenerator {
         }
       }
 
-      return { features, bounds: [0, 0, width, height] };
+      yield { features, bounds: [0, 0, width, height] };
     }
   }
 }

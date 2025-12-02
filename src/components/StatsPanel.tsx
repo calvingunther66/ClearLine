@@ -14,7 +14,9 @@ export const StatsPanel: React.FC<StatsPanelProps> = ({ selectedPrecinct }) => {
     const interval = setInterval(async () => {
       try {
         const result = await workerManager.sendMessage('RUN_ANALYSIS', {});
-        setStats(result as DistrictStats[]);
+        // The worker returns { analysis, projections }, so we need to extract analysis
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setStats((result as any).analysis as DistrictStats[]);
       } catch (e) {
         console.error(e);
       }
