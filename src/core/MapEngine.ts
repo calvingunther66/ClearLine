@@ -354,22 +354,13 @@ export class MapEngine {
           ctx.fillStyle = districtColors[colorIndex] || '#1f2937';
         } else {
           // Political View
-          // For now, color by precinct lean since we don't have live district stats in main thread yet
-          // Or better, color by district winner if we can.
-          // Let's stick to precinct lean for "Political View" as it shows the underlying data map.
-          // Actually, user asked "what do the different colored districts represent", implying they want to see district colors.
-          // But "Political View" usually means Red/Blue map.
-          // Let's do precinct-level Red/Blue for now as it's easiest and looks cool.
-          
-          const dem = precinct.stats[1];
-          const rep = precinct.stats[2];
+          // Use projected votes if available, otherwise historical
+          const dem = precinct.projectedDemVotes ?? precinct.stats[1];
+          const rep = precinct.projectedRepVotes ?? precinct.stats[2];
           const total = dem + rep;
           
           if (total > 0) {
             const demShare = dem / total;
-            // Scale opacity by margin? Or just solid color?
-            // Let's do solid color with intensity based on margin
-            // 50% = white/gray, 100% = blue, 0% = red
             
             if (demShare > 0.5) {
               // Blue
@@ -450,7 +441,7 @@ export class MapEngine {
   public async runAnalysis() {
     try {
       const result = await workerManager.sendMessage('RUN_ANALYSIS', {});
-      const { analysis, projections } = result as { analysis: any, projections: { id: number, dem: number, rep: number }[] };
+      const { projections } = result as { analysis: any, projections: { id: number, dem: number, rep: number }[] };
       
       // Update projections in DataStore
       if (projections) {

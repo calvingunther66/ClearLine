@@ -8,6 +8,8 @@ export interface PrecinctData {
   districtId: number;
   stateId: number;
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
+  projectedDemVotes?: number;
+  projectedRepVotes?: number;
   history?: PrecinctStats[];
 }
 
